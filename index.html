@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#eff3ea" />
+  <meta name="format-detection" content="telephone=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Моя еда" />
+  <title>Моя еда</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar"><div><span class="eyebrow">питание без пищевой бухгалтерии</span><h1>Моя еда</h1></div><button id="installBtn" class="iconbtn hidden" aria-label="Установить">＋</button></header>
+  <main id="app"></main>
+  <nav class="bottom-nav">
+    <button data-view="today">⌂<span>Сегодня</span></button>
+    <button data-view="library">▦<span>Блюда</span></button>
+    <button data-view="week">▤<span>Неделя</span></button>
+    <button data-view="shopping">✓<span>Покупки</span></button>
+  </nav>
+  <div id="modal" class="modal hidden"><div class="sheet"><button class="close" id="closeModal">×</button><div id="modalContent"></div></div></div>
+  <script src="data.js"></script><script src="app.js"></script>
+</body>
+</html>
