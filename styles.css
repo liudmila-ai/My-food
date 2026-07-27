@@ -12,3 +12,14 @@ button{touch-action:manipulation}
 .sheet{padding-left:max(18px,env(safe-area-inset-left));padding-right:max(18px,env(safe-area-inset-right))}
 @media (display-mode:standalone){.topbar{padding-top:12px}.eyebrow{opacity:.9}}
 @supports (-webkit-touch-callout:none){.card{box-shadow:none}.bottom-nav{background:rgba(255,255,255,.97)}}
+
+/* v3 */
+.week-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:14px 0 18px}
+.btn.secondary{background:#fff;color:#253227;border:1px solid #cad4c6}
+.ingredient-edit-row{display:grid;grid-template-columns:minmax(0,1fr) 76px 66px 38px;gap:8px;align-items:center;margin:8px 0}
+.ingredient-edit-row input,.ingredient-edit-row select{width:100%;padding:10px;border-radius:12px;border:1px solid #d7ddd3;background:#fff;font:inherit}
+.ingredient-edit-row .remove-ing{border:0;background:#f2eee9;border-radius:10px;height:40px;font-size:18px}
+.shopping-section{margin:20px 0}
+.shopping-section h3{margin-bottom:8px}
+.week-summary{padding:12px 14px;border-radius:16px;background:#f4f7f1;margin:10px 0 16px}
+@media(max-width:430px){.ingredient-edit-row{grid-template-columns:minmax(0,1fr) 64px 60px 34px;gap:6px}.week-actions{grid-template-columns:1fr}}
