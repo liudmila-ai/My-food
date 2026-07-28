@@ -1,4 +1,4 @@
-const CACHE = 'moya-eda-v11';
+const CACHE = 'moya-eda-v12';
 const APP_SHELL = [
   './',
   './index.html',
