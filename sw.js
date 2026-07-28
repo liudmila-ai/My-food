@@ -1,10 +1,11 @@
-const CACHE = 'moya-eda-v6';
+const CACHE = 'moya-eda-v7';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=6',
-  './app.js?v=6',
-  './data.js?v=6',
+  './styles.css?v=7',
+  './app.js?v=7',
+  './data.js?v=7',
+  './supabase-config.js?v=7',
   './manifest.webmanifest',
   './icon-180.png',
   './icon-192.png',
@@ -28,7 +29,6 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  // HTML and code are network-first so GitHub updates really arrive on iPhone.
   const isCode = event.request.mode === 'navigate' || /\.(?:js|css)$/.test(url.pathname);
   if (isCode) {
     event.respondWith(
