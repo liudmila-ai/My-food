@@ -5,13 +5,76 @@ const DEFAULT_TARGET={kcal:1750,protein:131,fat:58,carbs:175};
 const SLOT_SHARES={breakfast:.25,lunch:.30,snack:.15,dinner:.30};
 function macrosFromCalories(kcal){return {kcal:Math.round(kcal),protein:Math.round(kcal*.30/4),fat:Math.round(kcal*.30/9),carbs:Math.round(kcal*.40/4)}}
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const sb=window.supabase.createClient(window.SUPABASE_CONFIG.url,window.SUPABASE_CONFIG.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+let sb=null;
 let currentUser=null;
 let state=null;
 let cloudTimer=null;
 let syncing=false;
 let syncAgain=false;
 let suppressSync=true;
+let authListenerAttached=false;
+let cloudConnectPromise=null;
+const SUPABASE_CDN='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+const OFFLINE_USER_KEY='myFoodOfflineUser';
+const SIGNED_OUT_KEY='myFoodExplicitlySignedOut';
+const DB_NAME='MyFoodDB';
+const DB_VERSION=1;
+
+function openLocalDB(){
+  return new Promise((resolve,reject)=>{
+    if(!('indexedDB' in window)){resolve(null);return}
+    const req=indexedDB.open(DB_NAME,DB_VERSION);
+    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('kv'))db.createObjectStore('kv')};
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function idbSet(key,value){try{const db=await openLocalDB();if(!db)return;await new Promise((res,rej)=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').put(value,key);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error)});db.close()}catch(e){console.warn('IndexedDB write failed',e)}}
+async function idbGet(key){try{const db=await openLocalDB();if(!db)return null;const val=await new Promise((res,rej)=>{const tx=db.transaction('kv','readonly');const r=tx.objectStore('kv').get(key);r.onsuccess=()=>res(r.result??null);r.onerror=()=>rej(r.error)});db.close();return val}catch(e){console.warn('IndexedDB read failed',e);return null}}
+async function idbDelete(key){try{const db=await openLocalDB();if(!db)return;await new Promise((res,rej)=>{const tx=db.transaction('kv','readwrite');tx.objectStore('kv').delete(key);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error)});db.close()}catch(e){console.warn('IndexedDB delete failed',e)}}
+function dirtyKey(uid=currentUser?.id){return uid?`mealDirty:${uid}`:null}
+function pendingChanges(){const k=dirtyKey();return k?Number(localStorage.getItem(k)||0):0}
+function markDirty(){const k=dirtyKey();if(!k)return;const n=Math.min(999,Number(localStorage.getItem(k)||0)+1);localStorage.setItem(k,String(n));idbSet(k,n);updateSyncBadge()}
+function clearDirty(){const k=dirtyKey();if(!k)return;localStorage.setItem(k,'0');idbSet(k,0);updateSyncBadge()}
+function storeOfflineUser(user){if(!user?.id)return;const slim={id:user.id,email:user.email||'',user_metadata:user.user_metadata||{}};localStorage.removeItem(SIGNED_OUT_KEY);localStorage.setItem(OFFLINE_USER_KEY,JSON.stringify(slim));idbSet(OFFLINE_USER_KEY,slim)}
+function readOfflineUser(){
+  if(localStorage.getItem(SIGNED_OUT_KEY)==='1')return null;
+  try{const own=JSON.parse(localStorage.getItem(OFFLINE_USER_KEY)||'null');if(own?.id)return own}catch{}
+  // Миграция с v7-v10: Supabase уже мог сохранить сессию, хотя v11 ещё не создал свой offline-user.
+  for(let i=0;i<localStorage.length;i++){
+    const k=localStorage.key(i)||'';if(!/^sb-.+-auth-token$/.test(k))continue;
+    try{const raw=JSON.parse(localStorage.getItem(k)||'null');const u=raw?.user||raw?.currentSession?.user||raw?.session?.user;if(u?.id){const slim={id:u.id,email:u.email||'',user_metadata:u.user_metadata||{}};localStorage.setItem(OFFLINE_USER_KEY,JSON.stringify(slim));return slim}}catch{}
+  }
+  // Последний резерв: старое локальное состояние с UUID в ключе.
+  for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i)||'';const m=k.match(/^mealState:([0-9a-f-]{30,})$/i);if(!m)continue;try{const st=JSON.parse(localStorage.getItem(k)||'null');const name=st?.profiles?.[0]?.name||'Я';const slim={id:m[1],email:'',user_metadata:{name}};localStorage.setItem(OFFLINE_USER_KEY,JSON.stringify(slim));return slim}catch{}}
+  return null;
+}
+
+function loadSupabaseLibrary(timeoutMs=4500){
+  if(window.supabase)return Promise.resolve(true);
+  if(window.__supabaseLoader)return window.__supabaseLoader;
+  window.__supabaseLoader=new Promise(resolve=>{
+    const s=document.createElement('script');s.src=SUPABASE_CDN;s.async=true;
+    let done=false;const finish=v=>{if(done)return;done=true;clearTimeout(timer);resolve(v)};
+    s.onload=()=>finish(!!window.supabase);s.onerror=()=>finish(false);document.head.appendChild(s);
+    const timer=setTimeout(()=>finish(!!window.supabase),timeoutMs);
+  });
+  return window.__supabaseLoader;
+}
+async function ensureCloudClient(){
+  if(sb)return sb;
+  if(cloudConnectPromise)return cloudConnectPromise;
+  cloudConnectPromise=(async()=>{
+    const ok=await loadSupabaseLibrary();
+    if(!ok||!window.supabase){setSyncStatus(currentUser?offlineStatusText():'Облако недоступно');return null}
+    sb=window.supabase.createClient(window.SUPABASE_CONFIG.url,window.SUPABASE_CONFIG.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+    attachAuthListener();
+    return sb;
+  })();
+  const out=await cloudConnectPromise;cloudConnectPromise=null;return out;
+}
+function offlineStatusText(){const n=pendingChanges();return n?`Офлайн · ${n} изм.`:'Офлайн'}
+function updateSyncBadge(){const el=document.querySelector('#syncStatus');if(!el)return;const n=pendingChanges();if(n&&/Синхронизировано/.test(el.textContent||''))el.textContent=`Есть изменения · ${n}`;else if(n&&/Офлайн/.test(el.textContent||''))el.textContent=`Офлайн · ${n} изм.`}
 
 function emptyState(userId,name='Я',target=DEFAULT_TARGET){const baseKcal=target?.kcal??DEFAULT_TARGET.kcal,t={...macrosFromCalories(baseKcal),...(target||{}),kcal:baseKcal};return {recipeIngredients:{},shopping:{},cookingDone:{},view:'today',targetMode:'auto',familyMembers:[],profiles:[{id:userId,name:name||'Я',target:t,plan:{},favorites:[],weight:'',note:''}],activeProfileId:userId}}
 const profile=()=>state?.profiles?.[0];
@@ -19,9 +82,10 @@ const target=()=>profile()?.target||DEFAULT_TARGET;
 const enabledFamily=()=>state?.familyMembers?.filter(x=>x.enabled!==false)||[];
 const participants=()=>profile()?[profile(),...enabledFamily().map(m=>({...m,plan:profile().plan,favorites:[]}))]:[];
 function personTarget(p){return p?.target||DEFAULT_TARGET}
-function cacheKey(){return currentUser?`mealState:${currentUser.id}`:null}
-function saveLocal(){if(cacheKey()&&state)localStorage.setItem(cacheKey(),JSON.stringify(state))}
-function save(){saveLocal();if(!suppressSync)scheduleCloudSync()}
+function cacheKey(uid=currentUser?.id){return uid?`mealState:${uid}`:null}
+function saveLocal(){const k=cacheKey();if(k&&state){localStorage.setItem(k,JSON.stringify(state));idbSet(k,state)}}
+async function loadCachedState(uid){const k=cacheKey(uid);if(!k)return null;const fromDb=await idbGet(k);if(fromDb)return fromDb;try{return JSON.parse(localStorage.getItem(k)||'null')}catch{return null}}
+function save(){saveLocal();if(!suppressSync){markDirty();scheduleCloudSync()}}
 
 function mondayOf(date=new Date()){const d=new Date(date);d.setHours(12,0,0,0);const day=(d.getDay()+6)%7;d.setDate(d.getDate()-day);return d}
 function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
@@ -29,12 +93,16 @@ function isoLocal(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStar
 function weekDates(){const m=mondayOf();return DAYS.map((_,i)=>isoLocal(addDays(m,i)))}
 function dayByDate(date){const i=weekDates().indexOf(date);return i>=0?DAYS[i]:null}
 
-function scheduleCloudSync(){clearTimeout(cloudTimer);cloudTimer=setTimeout(syncAllToCloud,650)}
-async function syncAllToCloud(){
-  if(!currentUser||!state||suppressSync)return;
-  if(syncing){syncAgain=true;return}
+function scheduleCloudSync(){clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>syncAllToCloud(),900)}
+async function syncAllToCloud({force=false}={}){
+  if(!currentUser||!state||suppressSync)return false;
+  if(!force&&!pendingChanges())return true;
+  if(syncing){syncAgain=true;return false}
   syncing=true;
   try{
+    const client=await ensureCloudClient();if(!client){setSyncStatus(offlineStatusText());return false}
+    const {data:{session}}=await client.auth.getSession();if(!session?.user){setSyncStatus('Офлайн · нужен вход для синхронизации');return false}
+    currentUser=session.user;storeOfflineUser(currentUser);
     const uid=currentUser.id,p=profile(),dates=weekDates();
     const profileRow={user_id:uid,name:p.name||'',calories:p.target.kcal,protein:p.target.protein,fat:p.target.fat,carbs:p.target.carbs};
     let {error}=await sb.from('profiles').upsert(profileRow,{onConflict:'user_id'});if(error)throw error;
@@ -60,14 +128,14 @@ async function syncAllToCloud(){
     if(cooking.length){error=(await sb.from('cooking_state').insert(cooking)).error;if(error)throw error}
 
     error=(await sb.from('user_settings').upsert({user_id:uid,settings:{view:state.view,targetMode:state.targetMode||'auto',familyMembers:state.familyMembers||[]}},{onConflict:'user_id'})).error;if(error)throw error;
-    setSyncStatus('Синхронизировано');
-  }catch(e){console.error('Supabase sync failed',e);setSyncStatus('Есть несохранённые изменения')}
+    clearDirty();setSyncStatus('Синхронизировано');return true;
+  }catch(e){console.error('Supabase sync failed',e);setSyncStatus(offlineStatusText());return false}
   finally{syncing=false;if(syncAgain){syncAgain=false;scheduleCloudSync()}}
 }
 
 async function loadCloudState(user){
   const uid=user.id,dates=weekDates();
-  const cached=JSON.parse(localStorage.getItem(`mealState:${uid}`)||'null');
+  const cached=await loadCachedState(uid);
   try{
     const [pr,mp,fv,ro,ss,cs,us]=await Promise.all([
       sb.from('profiles').select('name,calories,protein,fat,carbs').eq('user_id',uid).maybeSingle(),
@@ -93,7 +161,7 @@ async function loadCloudState(user){
     st.familyMembers=Array.isArray(us.data?.settings?.familyMembers)?us.data.settings.familyMembers:[];
     if(st.targetMode==='auto')p.target=macrosFromCalories(p.target.kcal);
     st.familyMembers=st.familyMembers.map(m=>({...m,targetMode:m.targetMode||'auto',target:(m.targetMode||'auto')==='auto'?macrosFromCalories(m.target?.kcal||1750):(m.target||macrosFromCalories(1750)),enabled:m.enabled!==false}));
-    state=st;saveLocal();setSyncStatus('Синхронизировано');
+    state=st;saveLocal();clearDirty();setSyncStatus('Синхронизировано');
     return {remoteEmpty:!(mp.data||[]).length&&!(fv.data||[]).length&&!(ro.data||[]).length};
   }catch(e){
     console.error('Cloud load failed',e);setSyncStatus('Офлайн');
@@ -109,7 +177,7 @@ function offerLegacyMigration(){const legacy=legacySnapshot();if(!legacy||localS
 function importLegacy(){const l=legacySnapshot();if(l){const p=profile();p.name=l.name;p.target={...DEFAULT_TARGET,...l.target};p.plan=l.plan;p.favorites=l.favorites;state.recipeIngredients=l.recipeIngredients;state.shopping=l.shopping;state.cookingDone=l.cookingDone;localStorage.setItem('mealLegacyClaimed','1');saveLocal();suppressSync=false;syncAllToCloud();render()}modal.classList.add('hidden')}
 function skipLegacy(){localStorage.setItem('mealLegacyClaimed','1');modal.classList.add('hidden')}
 
-function setSyncStatus(text){const el=document.querySelector('#syncStatus');if(el)el.textContent=text}
+function setSyncStatus(text){const el=document.querySelector('#syncStatus');if(el){el.textContent=text;el.title='Статус синхронизации'}}
 function setSignedInUI(on){document.body.classList.toggle('auth-mode',!on);document.querySelector('.bottom-nav').classList.toggle('hidden',!on);document.querySelector('#profileBtn').classList.toggle('hidden',!on)}
 function appRedirectUrl(){return location.origin+location.pathname}
 function authErrorMessage(e){const m=e?.message||String(e||'Ошибка');if(/Invalid login credentials/i.test(m))return'Неверный email или пароль.';if(/Email not confirmed/i.test(m))return'Сначала подтвердите email по ссылке из письма.';if(/Password should be/i.test(m))return'Пароль слишком короткий. Используйте минимум 6 символов.';return m}
@@ -117,14 +185,14 @@ function authErrorMessage(e){const m=e?.message||String(e||'Ошибка');if(/I
 function renderAuth(mode='login',message=''){
   setSignedInUI(false);
   const signup=mode==='signup';
-  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v8</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}</div></section>`;
+  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v11</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
 }
-async function signUp(){const name=document.querySelector('#authName').value.trim(),email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value,p2=document.querySelector('#authPassword2').value;if(!email||!password)return renderAuth('signup','Заполните email и пароль.');if(password!==p2)return renderAuth('signup','Пароли не совпадают.');const {data,error}=await sb.auth.signUp({email,password,options:{data:{name:name||'Я'},emailRedirectTo:appRedirectUrl()}});if(error)return renderAuth('signup',authErrorMessage(error));if(!data.session)return renderAuth('login','Аккаунт создан. Проверьте почту и подтвердите email, затем войдите.');}
-async function signIn(){const email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value;const {error}=await sb.auth.signInWithPassword({email,password});if(error)renderAuth('login',authErrorMessage(error))}
-async function resetPassword(){const email=document.querySelector('#authEmail')?.value.trim()||prompt('Email для восстановления пароля:');if(!email)return;const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:appRedirectUrl()});renderAuth('login',error?authErrorMessage(error):'Письмо для восстановления пароля отправлено.')}
+async function signUp(){const name=document.querySelector('#authName').value.trim(),email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value,p2=document.querySelector('#authPassword2').value;if(!email||!password)return renderAuth('signup','Заполните email и пароль.');if(password!==p2)return renderAuth('signup','Пароли не совпадают.');const client=await ensureCloudClient();if(!client)return renderAuth('signup','Сервис аккаунтов сейчас недоступен. Для первой регистрации включите доступ к интернету/VPN и повторите.');const {data,error}=await client.auth.signUp({email,password,options:{data:{name:name||'Я'},emailRedirectTo:appRedirectUrl()}});if(error)return renderAuth('signup',authErrorMessage(error));if(!data.session)return renderAuth('login','Аккаунт создан. Проверьте почту и подтвердите email, затем войдите.');}
+async function signIn(){const email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value;const client=await ensureCloudClient();if(!client)return renderAuth('login','Supabase сейчас недоступен. Первый вход на этом устройстве требует сети/VPN.');const {error}=await client.auth.signInWithPassword({email,password});if(error)renderAuth('login',authErrorMessage(error))}
+async function resetPassword(){const email=document.querySelector('#authEmail')?.value.trim()||prompt('Email для восстановления пароля:');if(!email)return;const client=await ensureCloudClient();if(!client)return renderAuth('login','Для восстановления пароля сейчас нужен доступ к Supabase.');const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:appRedirectUrl()});renderAuth('login',error?authErrorMessage(error):'Письмо для восстановления пароля отправлено.')}
 function showRecovery(){modalContent.innerHTML=`<h2>Новый пароль</h2><label class="field">Новый пароль<input id="newPassword" type="password" autocomplete="new-password"></label><button class="btn" onclick="updatePassword()">Сохранить пароль</button>`;modal.classList.remove('hidden')}
-async function updatePassword(){const password=document.querySelector('#newPassword').value;const {error}=await sb.auth.updateUser({password});if(error){alert(authErrorMessage(error));return}modal.classList.add('hidden');alert('Пароль изменён.')}
-async function signOut(){await syncAllToCloud();await sb.auth.signOut();currentUser=null;state=null;renderAuth('login','Вы вышли из аккаунта.')}
+async function updatePassword(){const password=document.querySelector('#newPassword').value;const client=await ensureCloudClient();if(!client)return alert('Для смены пароля нужен доступ к Supabase.');const {error}=await client.auth.updateUser({password});if(error){alert(authErrorMessage(error));return}modal.classList.add('hidden');alert('Пароль изменён.')}
+async function signOut(){await syncAllToCloud({force:true});const client=await ensureCloudClient();if(client)await client.auth.signOut();localStorage.setItem(SIGNED_OUT_KEY,'1');localStorage.removeItem(OFFLINE_USER_KEY);await idbDelete(OFFLINE_USER_KEY);currentUser=null;state=null;renderAuth('login','Вы вышли из аккаунта.')}
 
 const dish=id=>DISHES.find(d=>d.id===id);
 const currentDay=()=>DAYS[(new Date().getDay()+6)%7];
@@ -207,7 +275,10 @@ function cookingPlan(){const meals=mealAggregate();if(!meals.length)return[];con
 function renderCooking(){const groups=cookingPlan();app.innerHTML=`<section><h2>Готовка</h2>${householdToggleHTML()}<p class="note"><b>Теперь план строится от каждого блюда недели.</b> Если во вторник стоит лазанья, здесь обязательно появится задача приготовить её заранее или во вторник. Общие курица, крупы и овощи суммируются отдельно, но не заменяют приготовление самого блюда.</p>${groups.length?groups.map(g=>`<div class="cook-block"><div class="day-head"><h3>${g.title}</h3><span class="meta">${g.time}</span></div>${g.items.map(x=>`<label class="cook-task ${state.cookingDone[x.key]?'done':''}"><input type="checkbox" ${state.cookingDone[x.key]?'checked':''} onchange="toggleCook('${x.key.replace(/'/g,"\\'")}')"><span><b>${esc(x.label)}</b><small>${esc(x.text)}</small></span></label>`).join('')}</div>`).join(''):'<div class="empty">Сначала составьте меню на неделю.</div>'}</section>`}
 function toggleCook(k){state.cookingDone[k]=!state.cookingDone[k];save();renderCooking()}
 
-function openProfiles(){const p=profile(),members=state.familyMembers||[];modalContent.innerHTML=`<span class="eyebrow">Аккаунт организатора</span><h2>${esc(p.name)}</h2><p class="note">${esc(currentUser?.email||'')}</p><div class="target-grid"><div class="account-stat"><b>${p.target.kcal}</b><span>ккал</span></div><div class="account-stat"><b>${p.target.protein}</b><span>белок</span></div><div class="account-stat"><b>${p.target.fat}</b><span>жиры</span></div><div class="account-stat"><b>${p.target.carbs}</b><span>углеводы</span></div></div><p class="tiny-note">${targetFormulaNote()}</p><button class="btn" onclick="editProfile()">Изменить мой профиль</button><section class="section"><div class="day-head"><h3>Семья</h3><button class="chip" onclick="editFamilyMember()">＋ добавить</button></div><p class="tiny-note">Членам семьи аккаунт не нужен. Они влияют только на порции, закупки и заготовки.</p>${members.map(m=>`<div class="family-row"><label><input type="checkbox" ${m.enabled!==false?'checked':''} onchange="toggleFamilyMember('${m.id}')"> <b>${esc(m.name)}</b><small>${m.target.kcal} ккал · Б ${m.target.protein} · Ж ${m.target.fat} · У ${m.target.carbs}</small></label><button class="chip" onclick="editFamilyMember('${m.id}')">изменить</button></div>`).join('')||'<div class="empty">Дополнительных участников пока нет.</div>'}</section><button class="btn secondary" onclick="signOut()">Выйти</button>`;modal.classList.remove('hidden')}
+async function syncNow(){setSyncStatus('Синхронизация…');const ok=await syncAllToCloud({force:true});if(!ok)setSyncStatus(offlineStatusText())}
+function exportData(){if(!state||!currentUser)return;const payload={format:'my-food-backup',version:11,exportedAt:new Date().toISOString(),user:{id:currentUser.id,email:currentUser.email||'',name:profile()?.name||'Я'},state};const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`my-food-backup-${new Date().toISOString().slice(0,10)}.json`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+function chooseImport(){const i=document.createElement('input');i.type='file';i.accept='application/json,.json';i.onchange=async()=>{const f=i.files?.[0];if(!f)return;try{const data=JSON.parse(await f.text());if(data?.format!=='my-food-backup'||!data.state)throw new Error('Неизвестный формат');if(!confirm('Импорт заменит локальные данные текущего аккаунта. Продолжить?'))return;state=data.state;state.profiles=Array.isArray(state.profiles)&&state.profiles.length?state.profiles:[{id:currentUser.id,name:'Я',target:DEFAULT_TARGET,plan:{},favorites:[]}];state.profiles[0].id=currentUser.id;state.activeProfileId=currentUser.id;saveLocal();markDirty();render();modal.classList.add('hidden');alert('Данные импортированы локально. Они синхронизируются при доступном Supabase.')}catch(e){alert('Не удалось импортировать файл: '+(e.message||e))}};i.click()}
+function openProfiles(){const p=profile(),members=state.familyMembers||[];modalContent.innerHTML=`<span class="eyebrow">Аккаунт организатора</span><h2>${esc(p.name)}</h2><p class="note">${esc(currentUser?.email||'')}</p><div class="target-grid"><div class="account-stat"><b>${p.target.kcal}</b><span>ккал</span></div><div class="account-stat"><b>${p.target.protein}</b><span>белок</span></div><div class="account-stat"><b>${p.target.fat}</b><span>жиры</span></div><div class="account-stat"><b>${p.target.carbs}</b><span>углеводы</span></div></div><p class="tiny-note">${targetFormulaNote()}</p><button class="btn" onclick="editProfile()">Изменить мой профиль</button><section class="section"><div class="day-head"><h3>Семья</h3><button class="chip" onclick="editFamilyMember()">＋ добавить</button></div><p class="tiny-note">Членам семьи аккаунт не нужен. Они влияют только на порции, закупки и заготовки.</p>${members.map(m=>`<div class="family-row"><label><input type="checkbox" ${m.enabled!==false?'checked':''} onchange="toggleFamilyMember('${m.id}')"> <b>${esc(m.name)}</b><small>${m.target.kcal} ккал · Б ${m.target.protein} · Ж ${m.target.fat} · У ${m.target.carbs}</small></label><button class="chip" onclick="editFamilyMember('${m.id}')">изменить</button></div>`).join('')||'<div class="empty">Дополнительных участников пока нет.</div>'}</section><section class="section"><h3>Синхронизация и резервная копия</h3><p class="tiny-note">Локальные данные работают без сети. Supabase используется для аккаунта и облачной копии.</p><div class="week-actions"><button class="btn" onclick="syncNow()">Синхронизировать сейчас</button><button class="btn secondary" onclick="exportData()">Экспорт JSON</button><button class="btn secondary" onclick="chooseImport()">Импорт JSON</button></div></section><button class="btn secondary" onclick="signOut()">Выйти</button>`;modal.classList.remove('hidden')}
 function toggleFamilyMember(id){const m=state.familyMembers.find(x=>x.id===id);if(!m)return;m.enabled=!m.enabled;state.shopping={};state.cookingDone={};save();openProfiles()}
 function editFamilyMember(id=''){const m=id?state.familyMembers.find(x=>x.id===id):null,auto=!m||m.targetMode!=='custom',t=m?.target||macrosFromCalories(2200);modalContent.innerHTML=`<h2>${m?'Член семьи':'Добавить члена семьи'}</h2><label class="field">Имя<input id="fmName" value="${esc(m?.name||'')}"></label><label class="field">Калорийность<input id="fmKcal" type="number" min="800" max="6000" value="${t.kcal}" oninput="previewFamilyMacros()"></label><div class="mode-cards"><label class="mode-card"><input type="radio" name="familyMacroMode" value="auto" ${auto?'checked':''} onchange="toggleFamilyMacroMode()"><span><b>Авто 30 / 30 / 40</b><small>30% белки, 30% жиры, 40% углеводы</small></span></label><label class="mode-card"><input type="radio" name="familyMacroMode" value="custom" ${!auto?'checked':''} onchange="toggleFamilyMacroMode()"><span><b>Свои БЖУ</b><small>Задать граммы вручную</small></span></label></div><div class="target-grid"><label class="field">Белок, г<input id="fmProtein" type="number" value="${t.protein}"></label><label class="field">Жиры, г<input id="fmFat" type="number" value="${t.fat}"></label><label class="field">Углеводы, г<input id="fmCarbs" type="number" value="${t.carbs}"></label></div><p id="familyMacroFormula" class="tiny-note"></p><div class="row"><button class="btn" onclick="saveFamilyMember('${id}')">Сохранить</button>${m?`<button class="btn secondary" onclick="deleteFamilyMember('${id}')">Удалить</button>`:''}</div>`;toggleFamilyMacroMode()}
 function selectedFamilyMacroMode(){return document.querySelector('input[name="familyMacroMode"]:checked')?.value||'auto'}
@@ -229,10 +300,24 @@ let deferredPrompt;window.addEventListener('beforeinstallprompt',e=>{e.preventDe
 if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js');
 
 async function bootSession(session){
-  if(!session?.user){currentUser=null;state=null;renderAuth('login');return}
-  currentUser=session.user;setSignedInUI(true);suppressSync=true;
+  if(!session?.user)return;
+  const cloudUser=session.user;storeOfflineUser(cloudUser);
+  const switching=currentUser?.id&&currentUser.id!==cloudUser.id;
+  currentUser=cloudUser;setSignedInUI(true);suppressSync=true;
+  const cached=switching?null:(state||await loadCachedState(currentUser.id));
+  if(cached){state=cached;render();setSyncStatus(pendingChanges()?`Есть изменения · ${pendingChanges()}`:'Локальные данные загружены')}
+  if(pendingChanges()&&state){suppressSync=false;await syncAllToCloud({force:true});render();return}
   const info=await loadCloudState(currentUser);suppressSync=false;render();
   if(info.remoteEmpty&&!info.offline)offerLegacyMigration();
 }
-(async()=>{const {data:{session}}=await sb.auth.getSession();await bootSession(session)})();
-sb.auth.onAuthStateChange(async(event,session)=>{if(event==='PASSWORD_RECOVERY'){currentUser=session?.user||currentUser;showRecovery();return}if(event==='SIGNED_IN'&&session){if(currentUser?.id!==session.user.id)await bootSession(session)}else if(event==='SIGNED_OUT'){currentUser=null;state=null;renderAuth('login')}});
+function attachAuthListener(){if(authListenerAttached||!sb)return;authListenerAttached=true;sb.auth.onAuthStateChange(async(event,session)=>{if(event==='PASSWORD_RECOVERY'){currentUser=session?.user||currentUser;if(currentUser)storeOfflineUser(currentUser);showRecovery();return}if(event==='SIGNED_IN'&&session){await bootSession(session)}else if(event==='SIGNED_OUT'&&!readOfflineUser()){currentUser=null;state=null;renderAuth('login')}})}
+async function bootOfflineFirst(){
+  const remembered=readOfflineUser();
+  if(remembered){currentUser=remembered;state=await loadCachedState(remembered.id)||emptyState(remembered.id,remembered.user_metadata?.name||remembered.email?.split('@')[0]||'Я');setSignedInUI(true);suppressSync=false;render();setSyncStatus(offlineStatusText())}
+  else renderAuth('login');
+  const client=await ensureCloudClient();if(!client){if(remembered)setSyncStatus(offlineStatusText());return}
+  try{const {data:{session}}=await client.auth.getSession();if(session?.user)await bootSession(session);else if(!remembered)renderAuth('login')}catch(e){console.warn('Cloud session unavailable',e);if(remembered)setSyncStatus(offlineStatusText())}
+}
+window.addEventListener('online',()=>{if(currentUser){setSyncStatus('Сеть появилась · синхронизация…');syncAllToCloud({force:true})}});
+window.addEventListener('offline',()=>{if(currentUser)setSyncStatus(offlineStatusText())});
+bootOfflineFirst();

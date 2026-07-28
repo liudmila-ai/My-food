@@ -1,11 +1,11 @@
-const CACHE = 'moya-eda-v10';
+const CACHE = 'moya-eda-v11';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=10',
-  './app.js?v=10',
-  './data.js?v=10',
-  './supabase-config.js?v=10',
+  './styles.css?v=11',
+  './app.js?v=11',
+  './data.js?v=11',
+  './supabase-config.js?v=11',
   './manifest.webmanifest',
   './icon-180.png',
   './icon-192.png',
@@ -27,7 +27,18 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin) {
+    if (url.hostname === 'cdn.jsdelivr.net') {
+      event.respondWith(
+        caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+          const copy = response.clone();
+          caches.open(CACHE).then(cache => cache.put(event.request, copy));
+          return response;
+        }))
+      );
+    }
+    return;
+  }
 
   const isCode = event.request.mode === 'navigate' || /\.(?:js|css)$/.test(url.pathname);
   if (isCode) {
