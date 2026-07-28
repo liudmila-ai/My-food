@@ -2373,3 +2373,92 @@ const RECIPE_DETAILS = {
     "prepType": "batch"
   }
 };
+
+
+// Detailed preparation metadata for the weekly cooking scheduler.
+const PREP_META = {
+  "О26": {
+    "mode": "batch_full",
+    "prepMinutes": 55,
+    "shelfDays": 3,
+    "freezer": true,
+    "freshFinish": [
+      "Салат"
+    ],
+    "note": "Собрать и полностью запечь лазанью заранее. Остудить, разделить на порции; порции на вторую половину недели заморозить. Салат готовить перед подачей."
+  },
+  "О13": {
+    "mode": "batch_components",
+    "prepMinutes": 35,
+    "shelfDays": 3,
+    "freezer": true,
+    "note": "Соус болоньезе приготовить партией; пасту лучше сварить в день подачи или на 1–2 дня."
+  },
+  "О09": {
+    "mode": "batch_full",
+    "prepMinutes": 35,
+    "shelfDays": 3,
+    "freezer": true
+  },
+  "О10": {
+    "mode": "batch_full",
+    "prepMinutes": 40,
+    "shelfDays": 3,
+    "freezer": true
+  },
+  "О12": {
+    "mode": "batch_full",
+    "prepMinutes": 40,
+    "shelfDays": 3,
+    "freezer": true
+  },
+  "О14": {
+    "mode": "batch_components",
+    "prepMinutes": 45,
+    "shelfDays": 3,
+    "freezer": true,
+    "note": "Фрикадельки приготовить заранее и заморозить/охладить; пюре лучше готовить ближе к подаче."
+  },
+  "О28": {
+    "mode": "batch_full",
+    "prepMinutes": 35,
+    "shelfDays": 3,
+    "freezer": true
+  },
+  "О30": {
+    "mode": "batch_full",
+    "prepMinutes": 35,
+    "shelfDays": 3,
+    "freezer": true
+  },
+  "З09": {
+    "mode": "batch_full",
+    "prepMinutes": 30,
+    "shelfDays": 3,
+    "freezer": true
+  },
+  "З10": {
+    "mode": "batch_full",
+    "prepMinutes": 45,
+    "shelfDays": 3,
+    "freezer": true
+  },
+  "З11": {
+    "mode": "batch_full",
+    "prepMinutes": 30,
+    "shelfDays": 3,
+    "freezer": true
+  },
+  "З12": {
+    "mode": "batch_full",
+    "prepMinutes": 25,
+    "shelfDays": 2,
+    "freezer": true
+  },
+  "З13": {
+    "mode": "daybefore",
+    "prepMinutes": 5,
+    "shelfDays": 2,
+    "freezer": false
+  }
+};
