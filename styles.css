@@ -44,3 +44,12 @@ button{touch-action:manipulation}
 .sync-status{border:0;background:#e7ece3;color:#536253;border-radius:999px;padding:8px 11px;font:600 11px/1.15 system-ui;max-width:118px;text-align:center;white-space:normal}
 .top-actions{display:flex;align-items:center;gap:8px}
 @media(max-width:390px){.sync-status{max-width:90px;font-size:10px;padding:7px 9px}}
+
+
+/* v13: пользовательские рецепты */
+.add-recipe-btn{width:auto;padding:9px 12px;font-size:12px}.recipe-count-head{margin:-5px 0 10px}.recipe-macro-edit{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.field textarea{padding:12px;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;font-size:16px;color:var(--ink);resize:vertical}.check-field{display:flex;align-items:center;gap:9px;margin:12px 0;font-size:14px}.danger-btn{background:#fff1f1!important;color:#963f3f!important;border:1px solid #efcccc!important}.custom-actions{margin-top:10px}.dish-card .tag:has(+ .custom-marker){background:#f0eafa}.custom-marker{font-size:10px;color:var(--accent)}
+@media(max-width:430px){.recipe-macro-edit{grid-template-columns:1fr 1fr}.add-recipe-btn{font-size:11px;padding:8px 10px}}
+
+/* v14: гарантированно видимая кнопка добавления рецепта */
+.library-screen{position:relative}.library-head{gap:12px}.library-head h2{margin-bottom:0}.add-recipe-btn{background:var(--accent);color:#fff;box-shadow:0 4px 14px rgba(70,105,78,.22);flex:0 0 auto}.floating-add-recipe{position:fixed;right:18px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:19;width:54px;height:54px;border:0;border-radius:50%;background:var(--accent);color:#fff;font-size:30px;line-height:1;box-shadow:0 8px 24px rgba(36,48,38,.25)}
+@media(min-width:761px){.floating-add-recipe{right:calc((100vw - 760px)/2 + 18px)}}
