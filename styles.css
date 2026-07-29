@@ -54,5 +54,5 @@ button{touch-action:manipulation}
 .library-screen{position:relative}.library-head{gap:12px}.library-head h2{margin-bottom:0}.add-recipe-btn{background:var(--accent);color:#fff;box-shadow:0 4px 14px rgba(70,105,78,.22);flex:0 0 auto}.floating-add-recipe{position:fixed;right:18px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:19;width:54px;height:54px;border:0;border-radius:50%;background:var(--accent);color:#fff;font-size:30px;line-height:1;box-shadow:0 8px 24px rgba(36,48,38,.25)}
 @media(min-width:761px){.floating-add-recipe{right:calc((100vw - 760px)/2 + 18px)}}
 
-/* v15 */
+/* v16 */
 .meal-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.danger-mini{opacity:.75}.family-row input[type=checkbox]{width:22px;height:22px}

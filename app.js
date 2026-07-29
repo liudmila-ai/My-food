@@ -264,7 +264,14 @@ const WEEK_TEMPLATES=[
  {proteins:['Курица','Лосось'],carbs:['Рис','Картофель','Булгур'],label:'курица + рыба'},
  {proteins:['Говядина','Индейка'],carbs:['Рис','Картофель','Паста'],label:'говядина + индейка'}
 ];
-function randomizeWeek(){const p=profile(),catalog=allDishes(),breakfastBatch=['З09','З10','З11','З12'].map(dish).filter(Boolean),sn=catalog.filter(d=>d.category==='Перекус');const cycles=[['О03','О11','О01'],['О06','О15','О16']].map(set=>set.map(dish).filter(Boolean));DAYS.forEach((day,di)=>{const block=di<3?0:di<6?1:0,within=di%3,mains=cycles[block].length>=3?cycles[block]:catalog.filter(d=>d.category==='Основное').slice(0,3),bf=breakfastBatch[(block+within)%Math.max(1,breakfastBatch.length)]||catalog.find(d=>d.category==='Завтрак');p.plan[day]={breakfast:bf?.id,lunch:mains[within%mains.length]?.id,snack:sn[(block+within)%Math.max(1,sn.length)]?.id,dinner:mains[(within+1)%mains.length]?.id}});state.mealSkips={};state.cookingDone={};state.shopping={};save();render()}
+function randomizeWeek(){
+ const p=profile(),catalog=allDishes(),sn=catalog.filter(d=>d.category==='Перекус'),breakfastBatch=['З09','З10','З11','З12'].map(dish).filter(Boolean);
+ // Each block is intentionally built around only two protein bases and two side bases.
+ // Mon-Wed: chicken + beef, rice + potato. Thu-Sat: chicken + beef, bulgur + potato. Sunday starts the next Sunday batch.
+ const blocks=[['О01','О03','О17'],['О04','О24','О15'],['О01','О03','О17']].map(set=>set.map(dish).filter(Boolean));
+ DAYS.forEach((day,di)=>{const block=di<3?0:di<6?1:2,within=di%3,mains=blocks[block].length?blocks[block]:catalog.filter(d=>d.category==='Основное').slice(0,3),bf=breakfastBatch[(block+within)%Math.max(1,breakfastBatch.length)]||catalog.find(d=>d.category==='Завтрак');p.plan[day]={breakfast:bf?.id,lunch:mains[within%mains.length]?.id,snack:sn[(block+within)%Math.max(1,sn.length)]?.id,dinner:mains[(within+1)%mains.length]?.id}});
+ state.mealSkips={};state.cookingDone={};state.shopping={};save();render();
+}
 
 function selectedPlans(){const plan=profile()?.plan||{};return participants().flatMap(p=>DAYS.flatMap(day=>SLOTS.map(([mealType])=>({profile:p,day,mealType,id:plan[day]?.[mealType]})).filter(x=>x.id&&!isMealSkipped(p.id,day,x.mealType))))}
 function shoppingItems(){const exact=new Map();selectedPlans().forEach(({profile:p,id,mealType})=>scaledIngredientsFor(id,mealType,p).forEach(x=>{const key=`${x.name}|${x.unit||'г'}`;exact.set(key,(exact.get(key)||0)+Number(x.qty||0))}));return [...exact.entries()].map(([key,qty])=>{const [name,unit]=key.split('|');return{name,unit,qty}}).filter(x=>x.qty>0).sort((a,b)=>a.name.localeCompare(b.name,'ru'))}
@@ -292,12 +299,73 @@ function taskAction(meal,meta){const d=meal.d,name=d?.name||meal.id,ings=ingredi
 function mergeMealTasks(meals){const map=new Map();meals.forEach(meal=>{const meta=inferredPrepMeta(meal.id),session=sessionForMeal(meal,meta),key=session+'|'+meal.id+'|'+meta.mode,z=map.get(key)||{session,id:meal.id,mode:meta.mode,meta,meals:[],minutes:0,ingredients:new Map()};z.meals.push(meal);z.minutes=Math.max(z.minutes,meta.prepMinutes||15);meal.ingredients.forEach((x,k)=>{const q=z.ingredients.get(k)||{...x,qty:0};q.qty+=x.qty;z.ingredients.set(k,q)});map.set(key,z)});return [...map.values()]}
 function taskText(z){const d=dish(z.id),days=[...new Set(z.meals.map(x=>x.day))].join(', '),fake={...z.meals[0],ingredients:z.ingredients};return `${taskAction(fake,z.meta)} Подача: ${days}.`}
 function sessionSort(a,b){const order={'Воскресенье':-1,'Понедельник':0,'Вторник':1,'Среда':2,'Четверг':3,'Пятница':4,'Суббота':5};return (order[a]??99)-(order[b]??99)}
-function batchPortionSummary(){const map=new Map();selectedPlans().forEach(({profile:p,id,mealType})=>{const d=dish(id);if(!d)return;const add=(label,type)=>{if(!label||label==='Другое')return;const k=type+'|'+label,z=map.get(k)||{type,label,portions:0,examples:new Set()};z.portions+=1;z.examples.add(d.name);map.set(k,z)};if(d.category==='Завтрак'&&['З09','З10','З11','З12'].includes(id))add(d.name,'breakfast');else if(d.category==='Основное'){add(proteinFamily(d),'protein');add(carbFamily(d),'carb')}});return [...map.values()]}
-function cookingPlan(){const meals=mealAggregate();if(!meals.length)return[];const tasks=mergeMealTasks(meals),sessions=[...new Set(tasks.map(x=>x.session))].sort(sessionSort),groups=[];
- sessions.forEach(session=>{const xs=tasks.filter(x=>x.session===session),mins=xs.reduce((a,x)=>a+x.minutes,0);groups.push({title:`${session} · ${session==='Воскресенье'?'основная заготовка':'готовка и сборка'}`,time:`≈ ${Math.max(5,Math.round(mins/5)*5)} мин`,items:xs.map(z=>({key:`recipe-${session}-${z.id}-${z.mode}`,label:`${dish(z.id)?.name||z.id} · ${[...new Set(z.meals.map(x=>x.day))].join(', ')}`,text:taskText(z)}))})});
- // Shared-base summary is informative only, not a replacement for the recipe tasks above.
- const bases=batchPortionSummary();if(bases.length)groups.unshift({title:'Заготовки партиями',time:'считать порциями',items:bases.map(x=>({key:'summary-'+x.type+'-'+x.label,label:`${x.label} · ${x.portions} порц.`,text:`Приготовить одной партией. Используется в: ${[...x.examples].slice(0,5).join(', ')}. Точные граммы каждой порции остаются в меню и карточках рецептов.`}))});return groups}
-function renderCooking(){const groups=cookingPlan();app.innerHTML=`<section><h2>Готовка</h2>${householdToggleHTML()}<p class="note"><b>Готовим блоками примерно на 3 дня.</b> Основные заготовки считаются порциями: 2 белковые базы, 2 гарнира и долгие завтраки. Точные граммы смотри в меню и рецептах. Свежие салаты, соусы и сборка остаются задачами дня подачи.</p>${groups.length?groups.map(g=>`<div class="cook-block"><div class="day-head"><h3>${g.title}</h3><span class="meta">${g.time}</span></div>${g.items.map(x=>`<label class="cook-task ${state.cookingDone[x.key]?'done':''}"><input type="checkbox" ${state.cookingDone[x.key]?'checked':''} onchange="toggleCook('${x.key.replace(/'/g,"\\'")}')"><span><b>${esc(x.label)}</b><small>${esc(x.text)}</small></span></label>`).join('')}</div>`).join(''):'<div class="empty">Сначала составьте меню на неделю.</div>'}</section>`}
+function prepSessionForDay(day){return ['Понедельник','Вторник','Среда','Воскресенье'].includes(day)?'Воскресенье':'Среда'}
+function roundPrepGram(q){const n=Number(q||0);return Math.max(5,Math.round(n/5)*5)}
+function prepBaseLabel(type,label){
+ if(type==='protein')return ({'Курица':'Курица базовая · запечь','Индейка':'Индейка базовая · запечь','Говядина':'Говядина базовая · потушить'}[label]||label);
+ if(type==='carb')return ({'Рис':'Рис · отварить','Картофель':'Картофель · запечь','Паста':'Паста · отварить','Булгур':'Булгур · отварить','Удон':'Удон · отварить','Лепёшки':'Лепёшки'}[label]||label);
+ return label;
+}
+function portionBreakdown(values,unit='г'){
+ const counts=new Map();values.forEach(v=>{const n=unit==='г'?roundPrepGram(v):Math.round(Number(v||0)*10)/10;counts.set(n,(counts.get(n)||0)+1)});
+ const parts=[...counts.entries()].sort((a,b)=>a[0]-b[0]).map(([g,n])=>`${n}×${g} ${unit}`);
+ const total=values.reduce((a,b)=>a+Number(b||0),0);
+ return {text:parts.join(' + '),total:unit==='г'?roundPrepGram(total):Math.round(total*10)/10};
+}
+function batchPrepSummary(){
+ const map=new Map(),breakfasts=new Map();
+ selectedPlans().forEach(({profile:p,day,mealType,id})=>{
+   const d=dish(id);if(!d)return;const session=prepSessionForDay(day);
+   if(mealType==='breakfast'&&['З09','З10','З11','З12'].includes(id)){
+     const key=session+'|breakfast|'+id,z=breakfasts.get(key)||{session,type:'breakfast',label:d.name,values:[],examples:new Set()};
+     z.values.push(portionFactorFor(d,mealType,p));z.examples.add(day+' · '+p.name);breakfasts.set(key,z);return;
+   }
+   if(d.category!=='Основное')return;
+   scaledIngredientsFor(id,mealType,p).forEach(x=>{
+     if((x.unit||'г')!=='г')return;const g=prepGroup(x.name);if(!g)return;const [type,label]=g;if(!['protein','carb'].includes(type))return;
+     const key=session+'|'+type+'|'+label,z=map.get(key)||{session,type,label:prepBaseLabel(type,label),values:[],examples:new Set()};
+     z.values.push(Number(x.qty||0));z.examples.add(d.name);map.set(key,z);
+   });
+ });
+ const out=[...map.values()].map(z=>{const b=portionBreakdown(z.values,'г');return {...z,portions:z.values.length,breakdown:b.text,total:b.total}});
+ breakfasts.forEach(z=>{const counts=new Map();z.values.forEach(v=>{const n=Math.round(v*100)/100;counts.set(n,(counts.get(n)||0)+1)});z.portions=z.values.length;z.breakdown=[...counts.entries()].map(([f,n])=>n===1?`1 порция ×${f}`:`${n} порции ×${f}`).join(' + ');out.push(z)});
+ return out;
+}
+function assemblyComponent(x){const g=prepGroup(x.name);if(!g)return 'other';return g[0]}
+function personAssemblyLine(p,id,mealType){
+ const all=scaledIngredientsFor(id,mealType,p),main=[],extras=[];
+ all.forEach(x=>{const t=assemblyComponent(x),q=(x.unit||'г')==='г'?roundPrepGram(x.qty):Math.round(Number(x.qty||0)*10)/10,txt=`${x.name} ${q} ${x.unit||'г'}`;(t==='protein'||t==='carb'||t==='veg'?main:extras).push(txt)});
+ const chosen=[...main,...extras.slice(0,3)];return `${p.name}: ${chosen.join(' + ')}`;
+}
+function dailyAssemblyGroups(){
+ const plan=profile()?.plan||{},groups=[];
+ DAYS.forEach(day=>{
+   const items=[];
+   SLOTS.forEach(([mealType,mealLabel])=>{
+     const id=plan[day]?.[mealType];if(!id)return;const d=dish(id);if(!d)return;const eaters=participants().filter(p=>!isMealSkipped(p.id,day,mealType));if(!eaters.length)return;
+     let text;
+     if(d.category==='Основное')text=eaters.map(p=>personAssemblyLine(p,id,mealType)).join(' · ');
+     else if(mealType==='breakfast'&&['З09','З10','З11','З12'].includes(id))text=`Достать готовую заготовку и подать. ${eaters.map(p=>`${p.name} ×${Math.round(portionFactorFor(d,mealType,p)*100)/100} порц.`).join(' · ')}`;
+     else text=`Собрать перед едой. ${eaters.map(p=>p.name).join(', ')}.`;
+     items.push({key:`assemble-${day}-${mealType}-${id}`,label:`${mealLabel} · ${d.name}`,text});
+   });
+   if(items.length)groups.push({title:`${day} · только сборка`,time:'5–15 мин',items});
+ });
+ return groups;
+}
+function cookingPlan(){
+ const chosen=selectedPlans();if(!chosen.length)return[];const prep=batchPrepSummary(),groups=[];
+ ['Воскресенье','Среда'].forEach(session=>{
+   const xs=prep.filter(x=>x.session===session);if(!xs.length)return;
+   const items=xs.map(x=>{
+     if(x.type==='breakfast')return {key:`prep-${session}-breakfast-${x.label}`,label:`${x.label} · ${x.portions} порц.`,text:`Приготовить одной партией. Разделить: ${x.breakdown}. Хранить охлаждённым до 3 дней; лишнее заморозить.`};
+     return {key:`prep-${session}-${x.type}-${x.label}`,label:`${x.label} · ${x.portions} порц.`,text:`Разложить после приготовления: ${x.breakdown}. Всего ≈ ${x.total} г. Используется в: ${[...x.examples].slice(0,5).join(', ')}.`};
+   });
+   groups.push({title:`${session} · заготовка на 3 дня`,time:'готовим партиями',items});
+ });
+ return [...groups,...dailyAssemblyGroups()];
+}
+function renderCooking(){const groups=cookingPlan();app.innerHTML=`<section><h2>Готовка</h2>${householdToggleHTML()}<p class="note"><b>Две большие готовки: воскресенье и среда.</b> В эти дни готовим белковые базы, гарниры и долгие завтраки. В будни ничего заново не готовим: только собираем нужные граммовки белка, гарнира, овощей и соуса. Размеры порций уже учитывают каждого члена семьи.</p>${groups.length?groups.map(g=>`<div class="cook-block"><div class="day-head"><h3>${g.title}</h3><span class="meta">${g.time}</span></div>${g.items.map(x=>`<label class="cook-task ${state.cookingDone[x.key]?'done':''}"><input type="checkbox" ${state.cookingDone[x.key]?'checked':''} onchange="toggleCook('${x.key.replace(/'/g,"\\'")}')"><span><b>${esc(x.label)}</b><small>${esc(x.text)}</small></span></label>`).join('')}</div>`).join(''):'<div class="empty">Сначала составьте меню на неделю.</div>'}</section>`}
 function toggleCook(k){state.cookingDone[k]=!state.cookingDone[k];save();renderCooking()}
 
 async function syncNow(){setSyncStatus('Синхронизация…');const ok=await syncAllToCloud({force:true});if(!ok)setSyncStatus(offlineStatusText())}
