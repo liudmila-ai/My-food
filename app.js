@@ -76,7 +76,7 @@ async function ensureCloudClient(){
 function offlineStatusText(){const n=pendingChanges();return n?`Офлайн · ${n} изм.`:'Офлайн'}
 function updateSyncBadge(){const el=document.querySelector('#syncStatus');if(!el)return;const n=pendingChanges();if(n&&/Синхронизировано/.test(el.textContent||''))el.textContent=`Есть изменения · ${n}`;else if(n&&/Офлайн/.test(el.textContent||''))el.textContent=`Офлайн · ${n} изм.`}
 
-function emptyState(userId,name='Я',target=DEFAULT_TARGET){const baseKcal=target?.kcal??DEFAULT_TARGET.kcal,t={...macrosFromCalories(baseKcal),...(target||{}),kcal:baseKcal};return {recipeIngredients:{},customRecipes:[],shopping:{},cookingDone:{},mealSkips:{},view:'today',targetMode:'auto',familyMembers:[],profiles:[{id:userId,name:name||'Я',target:t,plan:{},favorites:[],weight:'',note:''}],activeProfileId:userId}}
+function emptyState(userId,name='Я',target=DEFAULT_TARGET){const baseKcal=target?.kcal??DEFAULT_TARGET.kcal,t={...macrosFromCalories(baseKcal),...(target||{}),kcal:baseKcal};return {recipeIngredients:{},customRecipes:[],shopping:{},cookingDone:{},batchYields:{},mealSkips:{},view:'today',targetMode:'auto',familyMembers:[],profiles:[{id:userId,name:name||'Я',target:t,plan:{},favorites:[],weight:'',note:''}],activeProfileId:userId}}
 const profile=()=>state?.profiles?.[0];
 const target=()=>profile()?.target||DEFAULT_TARGET;
 const enabledFamily=()=>state?.familyMembers?.filter(x=>x.enabled!==false)||[];
@@ -186,7 +186,7 @@ function authErrorMessage(e){const m=e?.message||String(e||'Ошибка');if(/I
 function renderAuth(mode='login',message=''){
   setSignedInUI(false);
   const signup=mode==='signup';
-  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v27</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
+  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v28</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
 }
 async function signUp(){const name=document.querySelector('#authName').value.trim(),email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value,p2=document.querySelector('#authPassword2').value;if(!email||!password)return renderAuth('signup','Заполните email и пароль.');if(password!==p2)return renderAuth('signup','Пароли не совпадают.');const client=await ensureCloudClient();if(!client)return renderAuth('signup','Сервис аккаунтов сейчас недоступен. Для первой регистрации включите доступ к интернету/VPN и повторите.');const {data,error}=await client.auth.signUp({email,password,options:{data:{name:name||'Я'},emailRedirectTo:appRedirectUrl()}});if(error)return renderAuth('signup',authErrorMessage(error));if(!data.session)return renderAuth('login','Аккаунт создан. Проверьте почту и подтвердите email, затем войдите.');}
 async function signIn(){const email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value;const client=await ensureCloudClient();if(!client)return renderAuth('login','Supabase сейчас недоступен. Первый вход на этом устройстве требует сети/VPN.');const {error}=await client.auth.signInWithPassword({email,password});if(error)renderAuth('login',authErrorMessage(error))}
@@ -432,7 +432,7 @@ function randomizeMealPrepWeek(options){
   containerMeals:14
  };
  state.planMode='meal_prep';
- state.mealSkips={};state.cookingDone={};state.shopping={};
+ state.mealSkips={};state.cookingDone={};state.batchYields={};state.shopping={};
  save();render();
  setTimeout(()=>alert(
   `Неделя составлена.\n\nВоскресенье: ${firstPool.map(d=>d.name).join(', ')}.\n\nСреда: ${secondPool.map(d=>d.name).join(', ')}.\n\nСовпадений между блоками: 0.`
@@ -445,7 +445,7 @@ function randomizeWeek(){
  // Mon-Wed: chicken + beef, rice + potato. Thu-Sat: chicken + beef, bulgur + potato. Sunday starts the next Sunday batch.
  const blocks=[['О01','О03','О17'],['О04','О24','О15'],['О01','О03','О17']].map(set=>set.map(dish).filter(Boolean));
  DAYS.forEach((day,di)=>{const block=di<3?0:di<6?1:2,within=di%3,mains=blocks[block].length?blocks[block]:catalog.filter(d=>d.category==='Основное').slice(0,3),bf=breakfastBatch[(block+within)%Math.max(1,breakfastBatch.length)]||catalog.find(d=>d.category==='Завтрак');p.plan[day]={breakfast:bf?.id,lunch:mains[within%mains.length]?.id,snack:sn[(block+within)%Math.max(1,sn.length)]?.id,dinner:mains[(within+1)%mains.length]?.id}});
- state.mealSkips={};state.cookingDone={};state.shopping={};save();render();
+ state.mealSkips={};state.cookingDone={};state.batchYields={};state.shopping={};save();render();
 }
 
 function selectedPlans(){const plan=profile()?.plan||{};return participants().flatMap(p=>DAYS.flatMap(day=>SLOTS.map(([mealType])=>({profile:p,day,mealType,id:plan[day]?.[mealType]})).filter(x=>x.id&&!isMealSkipped(p.id,day,x.mealType))))}
@@ -483,8 +483,22 @@ function roundPrepGram(q){
  if(!Number.isFinite(n)||n<=0)return 0;
  return Math.max(5,Math.round(n/5)*5);
 }
-function containerWeight(ings){return roundPrepGram(ings.filter(x=>['г','мл'].includes(x.unit||'г')).reduce((s,x)=>s+Number(x.qty||0),0))}
-function compactWeightBreakdown(values){const m=new Map();values.forEach(v=>m.set(v,(m.get(v)||0)+1));return [...m.entries()].sort((a,b)=>a[0]-b[0]).map(([g,n])=>`${n}×≈${g} г`).join(' + ')}
+function ingredientYieldFactor(name){
+ const n=String(name||'').toLowerCase();
+ if(/готов|сыр|сметан|сливк|молок|йогурт|масл|томатн|протёрт|соус/.test(n))return 1;
+ if(/курин|индей|говядин|свинин|фарш|рыб|треск|минтай|филе/.test(n))return .75;
+ if(/картоф/.test(n))return .82;
+ if(/кабач|томат|помидор|гриб|перец|капуст|брокк|цветн|морков|лук|овощ/.test(n))return .78;
+ if(/макарон|рис|греч|чечевиц|фасол/.test(n))return /готов/.test(n)?1:.3;
+ return .9;
+}
+function estimatedReadyWeight(ings){
+ return roundPrepGram(ings.filter(x=>['г','мл'].includes(x.unit||'г')).reduce((s,x)=>s+Number(x.qty||0)*ingredientYieldFactor(x.name),0));
+}
+function compactWeightBreakdown(values){
+ const m=new Map();values.forEach(v=>m.set(v,(m.get(v)||0)+1));
+ return [...m.entries()].sort((a,b)=>a[0]-b[0]).map(([g,n])=>`${n}×≈${g} г`).join(' + ');
+}
 function aggregateIngredients(rows){const m=new Map();rows.flat().forEach(x=>{const k=x.name+'|'+(x.unit||'г');m.set(k,(m.get(k)||0)+Number(x.qty||0))});return [...m.entries()].map(([k,q])=>{const [name,unit]=k.split('|');return `${name} ${unit==='г'||unit==='мл'?roundPrepGram(q):Math.round(q*10)/10} ${unit}`}).join(' · ')}
 function mealPrepBatches(){
  const map=new Map();
@@ -495,7 +509,9 @@ function mealPrepBatches(){
    const session=prepSessionForDay(day),key=`${session}|${id}`;
    const z=map.get(key)||{session,id,mealType:'container',dish:d,containers:[],ingredientRows:[],days:new Set(),fresh:new Set()};
    const stable=containerIngredientsFor(id,mealType,p),fresh=freshIngredientsFor(id,mealType,p);
-   z.containers.push({person:p.name,day,weight:containerWeight(stable),ingredients:stable});z.ingredientRows.push(stable);z.days.add(day);fresh.forEach(x=>z.fresh.add(x.name));map.set(key,z);
+   const nutrition=scaledDishFor(d,mealType,p);
+   z.containers.push({person:p.name,day,estimatedWeight:estimatedReadyWeight(stable),kcal:Math.round(nutrition.kcal),ingredients:stable});
+   z.ingredientRows.push(stable);z.days.add(day);fresh.forEach(x=>z.fresh.add(x.name));map.set(key,z);
  });
  return [...map.values()];
 }
@@ -507,13 +523,52 @@ function dailyFreshTasks(){
    else {const mins=d.minutes||10;items.push({key:`fresh-${day}-${mealType}-${id}`,label:`${label} · ${d.name}`,text:`Приготовить или собрать перед едой. Ориентировочно ${mins} мин.`});}
  });if(items.length)groups.push({title:`${day} · взять контейнер`,time:'0–10 мин',items})});return groups;
 }
+function batchYieldKey(session,id){return `${session}|${id}`}
+function batchDistribution(x){
+ const totalKcal=x.containers.reduce((s,c)=>s+Number(c.kcal||0),0);
+ const estimatedTotal=x.containers.reduce((s,c)=>s+Number(c.estimatedWeight||0),0);
+ const key=batchYieldKey(x.session,x.id);
+ const actualTotal=Number(state.batchYields?.[key]||0);
+ const totalWeight=actualTotal>0?actualTotal:estimatedTotal;
+ let assigned=0;
+ const rows=x.containers.map((c,i)=>{
+   let weight=i===x.containers.length-1?Math.max(0,totalWeight-assigned):Math.round(totalWeight*(Number(c.kcal||0)/Math.max(1,totalKcal)));
+   assigned+=weight;return {...c,readyWeight:weight};
+ });
+ return {key,totalKcal,estimatedTotal,actualTotal,totalWeight,rows,kcalPer100:totalWeight>0?Math.round(totalKcal/totalWeight*100):0,isActual:actualTotal>0};
+}
+function openBatchYield(key,label){
+ state.batchYields??={};const current=Number(state.batchYields[key]||0);
+ modalContent.innerHTML=`<span class="eyebrow">Фактический выход</span><h2>${esc(label)}</h2><p class="note">После приготовления взвесь всё готовое блюдо без формы и введи общий вес. Приложение разделит его между контейнерами пропорционально их калорийности.</p><label class="field">Вес готовой партии, г<input id="batchYieldInput" type="number" min="1" step="1" value="${current||''}" placeholder="Например, 2280"></label><div class="week-actions"><button class="btn" onclick="saveBatchYield('${key.replace(/'/g,"\\'")}')">Сохранить и пересчитать</button>${current?`<button class="btn secondary" onclick="clearBatchYield('${key.replace(/'/g,"\\'")}')">Вернуть расчётный вес</button>`:''}<button class="btn secondary" onclick="modal.classList.add('hidden')">Отмена</button></div>`;
+ modal.classList.remove('hidden');
+}
+function saveBatchYield(key){
+ const value=Math.round(Number(document.querySelector('#batchYieldInput')?.value||0));
+ if(value<=0){alert('Укажи вес готовой партии в граммах.');return}
+ state.batchYields??={};state.batchYields[key]=value;save();modal.classList.add('hidden');renderCooking();
+}
+function clearBatchYield(key){state.batchYields??={};delete state.batchYields[key];save();modal.classList.add('hidden');renderCooking()}
 function cookingPlan(){
  const batches=mealPrepBatches();if(!selectedPlans().length)return[];const groups=[];
  const sessions=[...new Set(batches.map(x=>x.session))].sort(sessionSort);
- sessions.forEach(session=>{const xs=batches.filter(x=>x.session===session);if(!xs.length)return;const items=xs.map(x=>{const weights=compactWeightBreakdown(x.containers.map(c=>c.weight));const labels=x.containers.map(c=>`${c.day}: ${c.person}`).join(' · ');const r=recipeDetail(x.id)||{},fresh=[...x.fresh];return {key:`batch-${session}-${x.mealType}-${x.id}`,label:`${x.dish.name} · ${x.containers.length} контейнеров`,text:`Полностью приготовить блюдо и сразу разложить: ${weights}. Подписать: ${labels}. На всю партию: ${aggregateIngredients(x.ingredientRows)}. ${fresh.length?`Не класть заранее: ${fresh.join(', ')} — добавить в день подачи. `:''}Технология: ${r.steps||'Приготовить по карточке заготовки.'}`}});groups.push({title:`${session} · приготовить и упаковать`,time:'партия контейнеров',items})});
+ sessions.forEach(session=>{
+  const xs=batches.filter(x=>x.session===session);if(!xs.length)return;
+  const items=xs.map(x=>{
+   const dist=batchDistribution(x),weights=compactWeightBreakdown(dist.rows.map(c=>c.readyWeight));
+   const labels=dist.rows.map(c=>`${c.day}: ${c.person} — ${c.readyWeight} г / ${c.kcal} ккал`).join(' · ');
+   const r=recipeDetail(x.id)||{},fresh=[...x.fresh];
+   const status=dist.isActual?`Фактический выход готовой партии: ${dist.actualTotal} г · ${dist.kcalPer100} ккал/100 г.`:`Расчётный выход готовой партии: ≈${dist.estimatedTotal} г · ≈${dist.kcalPer100} ккал/100 г. После приготовления лучше взвесить партию.`;
+   return {key:`batch-${session}-${x.mealType}-${x.id}`,yieldKey:dist.key,label:`${x.dish.name} · ${x.containers.length} контейнеров`,text:`${status} Разложить готовое блюдо: ${weights}. Контейнеры: ${labels}. Сырые продукты на всю партию: ${aggregateIngredients(x.ingredientRows)}. ${fresh.length?`Не класть заранее: ${fresh.join(', ')} — добавить в день подачи. `:''}Технология: ${r.steps||'Приготовить по карточке заготовки.'}`};
+  });
+  groups.push({title:`${session} · приготовить и упаковать`,time:'партия контейнеров',items});
+ });
  return [...groups,...dailyFreshTasks()];
 }
-function renderCooking(){state.cookingDone??={};let groups=[];try{groups=cookingPlan()}catch(e){console.error('cookingPlan',e);app.innerHTML=`<section><h2>Готовка и контейнеры</h2><div class="empty">Не удалось построить план готовки: ${esc(e.message||String(e))}</div></section>`;return}app.innerHTML=`<section><h2>Готовка и контейнеры</h2>${householdToggleHTML()}<p class="note"><b>Готовим готовые блюда, а не отдельные компоненты.</b> В воскресенье упаковываем контейнеры на понедельник–среду, в среду — на четверг–воскресенье. Каждый контейнер уже содержит основную часть блюда в индивидуальной граммовке. Отдельно остаются только продукты, которые не переживут хранение, и быстрые завтраки.</p>${groups.length?groups.map(g=>`<div class="cook-block"><div class="day-head"><h3>${g.title}</h3><span class="meta">${g.time}</span></div>${g.items.map(x=>`<label class="cook-task ${state.cookingDone[x.key]?'done':''}"><input type="checkbox" ${state.cookingDone[x.key]?'checked':''} onchange="toggleCook('${x.key.replace(/'/g,"\\'")}')"><span><b>${esc(x.label)}</b><small>${esc(x.text)}</small></span></label>`).join('')}</div>`).join(''):'<div class="empty">Сначала составьте meal prep неделю.</div>'}</section>`}
+function renderCooking(){
+ state.cookingDone??={};state.batchYields??={};let groups=[];
+ try{groups=cookingPlan()}catch(e){console.error('cookingPlan',e);app.innerHTML=`<section><h2>Готовка и контейнеры</h2><div class="empty">Не удалось построить план готовки: ${esc(e.message||String(e))}</div></section>`;return}
+ app.innerHTML=`<section><h2>Готовка и контейнеры</h2>${householdToggleHTML()}<p class="note"><b>Калорийность считается по всем продуктам рецепта.</b> Вес готовых контейнеров сначала оценивается по коэффициентам выхода. После приготовления нажми «Указать вес готовой партии», введи результат взвешивания, и приложение точно пересчитает граммы каждого контейнера и ккал на 100 г.</p>${groups.length?groups.map(g=>`<div class="cook-block"><div class="day-head"><h3>${g.title}</h3><span class="meta">${g.time}</span></div>${g.items.map(x=>`<div class="cook-task ${state.cookingDone[x.key]?'done':''}"><input type="checkbox" ${state.cookingDone[x.key]?'checked':''} onchange="toggleCook('${x.key.replace(/'/g,"\\'")}')"><span><b>${esc(x.label)}</b><small>${esc(x.text)}</small>${x.yieldKey?`<button class="inline-action" onclick="openBatchYield('${x.yieldKey.replace(/'/g,"\\'")}','${x.label.replace(/'/g,"\\'")}')">Указать вес готовой партии</button>`:''}</span></div>`).join('')}</div>`).join(''):'<div class="empty">Сначала составьте meal prep неделю.</div>'}</section>`;
+}
 function toggleCook(k){state.cookingDone??={};state.cookingDone[k]=!state.cookingDone[k];save();renderCooking()}
 
 async function syncNow(){setSyncStatus('Синхронизация…');const ok=await syncAllToCloud({force:true});if(!ok)setSyncStatus(offlineStatusText())}
@@ -534,7 +589,7 @@ function toggleMacroMode(){const auto=selectedMacroMode()==='auto';['pfProtein',
 function saveProfile(){const p=profile(),kcal=+document.querySelector('#pfKcal').value||1750,mode=selectedMacroMode();p.name=document.querySelector('#pfName').value.trim()||'Я';p.target=mode==='auto'?macrosFromCalories(kcal):{kcal,protein:+document.querySelector('#pfProtein').value||0,fat:+document.querySelector('#pfFat').value||0,carbs:+document.querySelector('#pfCarbs').value||0};state.targetMode=mode;state.cookingDone={};state.shopping={};save();modal.classList.add('hidden');updateProfileButton();render()}
 function updateProfileButton(){const b=document.querySelector('#profileBtn');if(b&&profile())b.textContent=(profile().name||'Я').slice(0,2).toUpperCase()}
 
-function render(){if(!state||!currentUser)return;state.customRecipes??=[];state.mealSkips??={};state.cookingDone??={};state.shopping??={};state.weekPreferences??=defaultWeekPreferences();document.querySelectorAll('.bottom-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));({today:renderToday,library:renderLibrary,week:renderWeek,cooking:renderCooking,shopping:renderShopping}[state.view]||renderToday)();updateProfileButton()}
+function render(){if(!state||!currentUser)return;state.customRecipes??=[];state.mealSkips??={};state.cookingDone??={};state.batchYields??={};state.shopping??={};state.weekPreferences??=defaultWeekPreferences();document.querySelectorAll('.bottom-nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));({today:renderToday,library:renderLibrary,week:renderWeek,cooking:renderCooking,shopping:renderShopping}[state.view]||renderToday)();updateProfileButton()}
 document.querySelectorAll('.bottom-nav button').forEach(b=>b.onclick=()=>{if(!state)return;state.view=b.dataset.view;save();render()});
 document.querySelector('#closeModal').onclick=()=>modal.classList.add('hidden');modal.onclick=e=>{if(e.target===modal)modal.classList.add('hidden')};document.querySelector('#profileBtn').onclick=openProfiles;
 let deferredPrompt;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;document.querySelector('#installBtn').classList.remove('hidden')});document.querySelector('#installBtn').onclick=async()=>{if(deferredPrompt){deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null}};
