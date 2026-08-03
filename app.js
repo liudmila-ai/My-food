@@ -186,7 +186,7 @@ function authErrorMessage(e){const m=e?.message||String(e||'Ошибка');if(/I
 function renderAuth(mode='login',message=''){
   setSignedInUI(false);
   const signup=mode==='signup';
-  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v12</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
+  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v17</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
 }
 async function signUp(){const name=document.querySelector('#authName').value.trim(),email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value,p2=document.querySelector('#authPassword2').value;if(!email||!password)return renderAuth('signup','Заполните email и пароль.');if(password!==p2)return renderAuth('signup','Пароли не совпадают.');const client=await ensureCloudClient();if(!client)return renderAuth('signup','Сервис аккаунтов сейчас недоступен. Для первой регистрации включите доступ к интернету/VPN и повторите.');const {data,error}=await client.auth.signUp({email,password,options:{data:{name:name||'Я'},emailRedirectTo:appRedirectUrl()}});if(error)return renderAuth('signup',authErrorMessage(error));if(!data.session)return renderAuth('login','Аккаунт создан. Проверьте почту и подтвердите email, затем войдите.');}
 async function signIn(){const email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value;const client=await ensureCloudClient();if(!client)return renderAuth('login','Supabase сейчас недоступен. Первый вход на этом устройстве требует сети/VPN.');const {error}=await client.auth.signInWithPassword({email,password});if(error)renderAuth('login',authErrorMessage(error))}
@@ -233,7 +233,7 @@ function toggleFavorite(id){const p=profile();p.favorites=p.favorites.includes(i
 function toggleFavoriteCard(id,event){event?.stopPropagation();const p=profile();p.favorites=p.favorites.includes(id)?p.favorites.filter(x=>x!==id):[...p.favorites,id];save();renderLibrary()}
 function addToToday(id){const p=profile(),d=dish(id),key=d.category==='Завтрак'?'breakfast':d.category==='Перекус'?'snack':'dinner';p.plan[currentDay()]??={};p.plan[currentDay()][key]=id;save();modal.classList.add('hidden');render()}
 
-function renderWeek(){const p=profile(),ts=DAYS.map(day=>planTotalsForDay(day)),filled=ts.filter(t=>t.kcal>0),avg=filled.length?Math.round(filled.reduce((a,t)=>a+t.kcal,0)/filled.length):0;app.innerHTML=`<section><h2>Неделя · ${esc(p.name)}</h2><div class="week-actions"><button class="btn" onclick="randomizeWeek()">Составить экономную неделю</button><button class="btn secondary" onclick="clearWeek()">Очистить</button></div>${filled.length?`<div class="week-summary">Среднее: <b>${avg} ккал/день</b> · ${filled.length}/7 дней</div>`:''}<p class="note">Каждый приём пищи масштабируется под текущую цель ${target().kcal} ккал. Распределение калорий: завтрак 25%, обед 30%, перекус 15%, ужин 30%. ${targetFormulaNote()}</p>${DAYS.map(day=>{const t=planTotalsForDay(day);return `<div class="day"><div class="day-head"><b>${day}</b><span class="meta">${Math.round(t.kcal)} ккал · Б ${Math.round(t.protein)} · Ж ${Math.round(t.fat)} · У ${Math.round(t.carbs)}</span></div><div class="slots">${SLOTS.map(([k,l])=>mealRow(day,k,l)).join('')}</div></div>`}).join('')}</section>`}
+function renderWeek(){const p=profile(),ts=DAYS.map(day=>planTotalsForDay(day)),filled=ts.filter(t=>t.kcal>0),avg=filled.length?Math.round(filled.reduce((a,t)=>a+t.kcal,0)/filled.length):0;app.innerHTML=`<section><h2>Неделя · ${esc(p.name)}</h2><div class="week-actions"><button class="btn" onclick="randomizeThreeDays()">Составить на 3 дня</button><button class="btn secondary" onclick="randomizeWeek()">Составить разнообразную неделю</button><button class="btn secondary" onclick="clearWeek()">Очистить</button></div>${filled.length?`<div class="week-summary">Среднее: <b>${avg} ккал/день</b> · ${filled.length}/7 дней</div>`:''}<p class="note"><b>На 3 дня:</b> блюда готовятся в воскресенье и раскладываются по контейнерам; ежедневно остаются только свежие добавки и блюда до 10 минут. <b>Разнообразная неделя:</b> прежний режим с двумя заготовками. Каждый приём пищи масштабируется под цель ${target().kcal} ккал. ${targetFormulaNote()}</p>${DAYS.map(day=>{const t=planTotalsForDay(day);return `<div class="day"><div class="day-head"><b>${day}</b><span class="meta">${Math.round(t.kcal)} ккал · Б ${Math.round(t.protein)} · Ж ${Math.round(t.fat)} · У ${Math.round(t.carbs)}</span></div><div class="slots">${SLOTS.map(([k,l])=>mealRow(day,k,l)).join('')}</div></div>`}).join('')}</section>`}
 function clearWeek(){profile().plan={};state.cookingDone={};save();render()}
 function customIngredientRowHTML(x={name:'',qty:0,unit:'г'}){return `<div class="ingredient-edit-row custom-ing-row"><input class="cr-ing-name" placeholder="Продукт" value="${esc(x.name||'')}"><input class="cr-ing-qty" type="number" min="0" step="0.1" placeholder="0" value="${Number(x.qty||0)}"><select class="cr-ing-unit">${['г','мл','шт','ст.л.','ч.л.','банка','уп.'].map(u=>`<option ${x.unit===u?'selected':''}>${u}</option>`).join('')}</select><button class="remove-ing" type="button" onclick="this.closest('.custom-ing-row').remove()">×</button></div>`}
 function addCustomIngredientRow(x){const box=document.querySelector('#customIngredients');if(box)box.insertAdjacentHTML('beforeend',customIngredientRowHTML(x||{name:'',qty:0,unit:'г'}))}
@@ -264,6 +264,29 @@ const WEEK_TEMPLATES=[
  {proteins:['Курица','Лосось'],carbs:['Рис','Картофель','Булгур'],label:'курица + рыба'},
  {proteins:['Говядина','Индейка'],carbs:['Рис','Картофель','Паста'],label:'говядина + индейка'}
 ];
+
+function randomizeThreeDays(){
+ const p=profile(),catalog=allDishes();
+ const snackPool=catalog.filter(d=>d.category==='Перекус');
+ const batchBreakfast=['З09','З10','З11','З12'].map(dish).filter(Boolean);
+ const quickBreakfast=['З06','З01','З14'].map(dish).filter(Boolean);
+ const lunch=dish('О03')||catalog.find(d=>d.category==='Основное');
+ const dinner=dish('О16')||catalog.filter(d=>d.category==='Основное')[1]||lunch;
+ const days=['Понедельник','Вторник','Среда'];
+ DAYS.forEach(day=>{p.plan[day]={}});
+ days.forEach((day,i)=>{
+   const breakfast=(i===1?(quickBreakfast[0]||batchBreakfast[0]):(batchBreakfast[i%Math.max(1,batchBreakfast.length)]||quickBreakfast[0]));
+   p.plan[day]={
+     breakfast:breakfast?.id,
+     lunch:lunch?.id,
+     snack:snackPool[i%Math.max(1,snackPool.length)]?.id,
+     dinner:dinner?.id
+   };
+ });
+ state.planMode='three_day';
+ state.planMode='diverse_week';state.mealSkips={};state.cookingDone={};state.shopping={};save();render();
+}
+
 function randomizeWeek(){
  const p=profile(),catalog=allDishes(),sn=catalog.filter(d=>d.category==='Перекус'),breakfastBatch=['З09','З10','З11','З12'].map(dish).filter(Boolean);
  // Each block is intentionally built around only two protein bases and two side bases.
@@ -299,7 +322,7 @@ function taskAction(meal,meta){const d=meal.d,name=d?.name||meal.id,ings=ingredi
 function mergeMealTasks(meals){const map=new Map();meals.forEach(meal=>{const meta=inferredPrepMeta(meal.id),session=sessionForMeal(meal,meta),key=session+'|'+meal.id+'|'+meta.mode,z=map.get(key)||{session,id:meal.id,mode:meta.mode,meta,meals:[],minutes:0,ingredients:new Map()};z.meals.push(meal);z.minutes=Math.max(z.minutes,meta.prepMinutes||15);meal.ingredients.forEach((x,k)=>{const q=z.ingredients.get(k)||{...x,qty:0};q.qty+=x.qty;z.ingredients.set(k,q)});map.set(key,z)});return [...map.values()]}
 function taskText(z){const d=dish(z.id),days=[...new Set(z.meals.map(x=>x.day))].join(', '),fake={...z.meals[0],ingredients:z.ingredients};return `${taskAction(fake,z.meta)} Подача: ${days}.`}
 function sessionSort(a,b){const order={'Воскресенье':-1,'Понедельник':0,'Вторник':1,'Среда':2,'Четверг':3,'Пятница':4,'Суббота':5};return (order[a]??99)-(order[b]??99)}
-function prepSessionForDay(day){return ['Понедельник','Вторник','Среда','Воскресенье'].includes(day)?'Воскресенье':'Среда'}
+function prepSessionForDay(day){if(state?.planMode==='three_day')return 'Воскресенье';return ['Понедельник','Вторник','Среда','Воскресенье'].includes(day)?'Воскресенье':'Среда'}
 function roundPrepGram(q){const n=Number(q||0);return Math.max(5,Math.round(n/5)*5)}
 function prepBaseLabel(type,label){
  if(type==='protein')return ({'Курица':'Курица базовая · запечь','Индейка':'Индейка базовая · запечь','Говядина':'Говядина базовая · потушить'}[label]||label);
