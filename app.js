@@ -186,7 +186,7 @@ function authErrorMessage(e){const m=e?.message||String(e||'Ошибка');if(/I
 function renderAuth(mode='login',message=''){
   setSignedInUI(false);
   const signup=mode==='signup';
-  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v25</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
+  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v26</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
 }
 async function signUp(){const name=document.querySelector('#authName').value.trim(),email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value,p2=document.querySelector('#authPassword2').value;if(!email||!password)return renderAuth('signup','Заполните email и пароль.');if(password!==p2)return renderAuth('signup','Пароли не совпадают.');const client=await ensureCloudClient();if(!client)return renderAuth('signup','Сервис аккаунтов сейчас недоступен. Для первой регистрации включите доступ к интернету/VPN и повторите.');const {data,error}=await client.auth.signUp({email,password,options:{data:{name:name||'Я'},emailRedirectTo:appRedirectUrl()}});if(error)return renderAuth('signup',authErrorMessage(error));if(!data.session)return renderAuth('login','Аккаунт создан. Проверьте почту и подтвердите email, затем войдите.');}
 async function signIn(){const email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value;const client=await ensureCloudClient();if(!client)return renderAuth('login','Supabase сейчас недоступен. Первый вход на этом устройстве требует сети/VPN.');const {error}=await client.auth.signInWithPassword({email,password});if(error)renderAuth('login',authErrorMessage(error))}
@@ -273,67 +273,158 @@ const WEEK_TEMPLATES=[
 function defaultWeekPreferences(){return {cookSessions:2,repeatMode:'high',maxMainDishes:4,containerMeals:14,allowFreezer:true,fishMeals:1}}
 function openWeekBuilder(){
  const x={...defaultWeekPreferences(),...(state.weekPreferences||{})};
- modalContent.innerHTML=`<span class="eyebrow">Конструктор недели</span><h2>Как будем готовить</h2><label class="field">Сколько раз готовить?<select id="wbSessions" class="select"><option value="1" ${x.cookSessions===1?'selected':''}>1 раз · воскресенье</option><option value="2" ${x.cookSessions===2?'selected':''}>2 раза · воскресенье и среда</option><option value="3" ${x.cookSessions===3?'selected':''}>3 раза · воскресенье, вторник и пятница</option></select></label><label class="field">Повторы блюд<select id="wbRepeat" class="select"><option value="high" ${x.repeatMode==='high'?'selected':''}>Повторы удобны</option><option value="medium" ${x.repeatMode==='medium'?'selected':''}>Немного повторов</option><option value="low" ${x.repeatMode==='low'?'selected':''}>Минимум повторов</option></select></label><div class="target-grid"><label class="field">Максимум основных блюд<input id="wbMaxDishes" type="number" min="2" max="10" value="${x.maxMainDishes}"></label><label class="field">Контейнерных приёмов пищи<input id="wbContainers" type="number" min="4" max="28" value="${x.containerMeals}"></label></div><label class="field">Рыба за неделю<select id="wbFish" class="select"><option value="0" ${x.fishMeals===0?'selected':''}>Не обязательно</option><option value="1" ${x.fishMeals===1?'selected':''}>1 приём пищи</option><option value="2" ${x.fishMeals===2?'selected':''}>2 приёма пищи</option><option value="3" ${x.fishMeals===3?'selected':''}>3 приёма пищи</option></select></label><label class="check-field"><input id="wbFreezer" type="checkbox" ${x.allowFreezer?'checked':''}> Можно использовать заморозку</label><p class="tiny-note">Настройки влияют на число партий, повторы и допустимые заготовки. Индивидуальные порции семьи рассчитываются после выбора блюд.</p><div class="week-actions"><button class="btn" onclick="saveWeekBuilderAndGenerate()">Составить неделю</button><button class="btn secondary" onclick="modal.classList.add('hidden')">Отмена</button></div>`;
- modal.classList.remove('hidden');
+ const containers=Math.max(0,Math.min(14,Number(x.containerMeals??14)));
+ const fish=Math.max(0,Math.min(containers,Number(x.fishMeals??0)));
+ modalContent.innerHTML=`<span class="eyebrow">Конструктор недели</span><h2>Как будем готовить</h2>
+ <label class="field">Сколько раз готовить?
+  <select id="wbSessions" class="select">
+   <option value="1" ${x.cookSessions===1?'selected':''}>1 раз · воскресенье</option>
+   <option value="2" ${x.cookSessions===2?'selected':''}>2 раза · воскресенье и среда</option>
+   <option value="3" ${x.cookSessions===3?'selected':''}>3 раза · воскресенье, вторник и пятница</option>
+  </select>
+ </label>
+ <label class="field">Повторы контейнерных блюд
+  <select id="wbRepeat" class="select">
+   <option value="high" ${x.repeatMode==='high'?'selected':''}>Повторы удобны</option>
+   <option value="medium" ${x.repeatMode==='medium'?'selected':''}>Немного повторов</option>
+   <option value="low" ${x.repeatMode==='low'?'selected':''}>Минимум повторов</option>
+  </select>
+ </label>
+ <div class="target-grid">
+  <label class="field">Максимум разных контейнерных блюд
+   <input id="wbMaxDishes" type="number" min="1" max="10" value="${x.maxMainDishes}">
+  </label>
+  <label class="field">Контейнерных обедов и ужинов
+   <input id="wbContainers" type="number" min="0" max="14" value="${containers}" oninput="updateWeekBuilderHint()">
+  </label>
+ </div>
+ <label class="field">Из них с рыбой
+  <input id="wbFish" type="number" min="0" max="${containers}" value="${fish}" oninput="updateWeekBuilderHint()">
+ </label>
+ <label class="check-field"><input id="wbFreezer" type="checkbox" ${x.allowFreezer?'checked':''}> Можно использовать заморозку</label>
+ <div id="wbHint" class="week-summary"></div>
+ <p class="tiny-note">За неделю всего 14 основных приёмов пищи: 7 обедов и 7 ужинов. Указанное число контейнеров будет соблюдено точно. Остальные основные приёмы заполнятся быстрыми свежими блюдами или останутся свободными, если подходящих блюд нет.</p>
+ <div class="week-actions"><button class="btn" onclick="saveWeekBuilderAndGenerate()">Составить неделю</button><button class="btn secondary" onclick="modal.classList.add('hidden')">Отмена</button></div>`;
+ modal.classList.remove('hidden');updateWeekBuilderHint();
+}
+function updateWeekBuilderHint(){
+ const c=Math.max(0,Math.min(14,Number(document.querySelector('#wbContainers')?.value)||0));
+ const fishEl=document.querySelector('#wbFish');
+ if(fishEl){fishEl.max=String(c);if(Number(fishEl.value)>c)fishEl.value=String(c)}
+ const f=Math.max(0,Math.min(c,Number(fishEl?.value)||0));
+ const hint=document.querySelector('#wbHint');
+ if(hint)hint.innerHTML=`Контейнеры: <b>${c} из 14</b> · рыба: <b>${f}</b> · быстрые/свободные: <b>${14-c}</b>`;
 }
 function saveWeekBuilderAndGenerate(){
- state.weekPreferences={cookSessions:Number(document.querySelector('#wbSessions').value)||2,repeatMode:document.querySelector('#wbRepeat').value,maxMainDishes:Number(document.querySelector('#wbMaxDishes').value)||4,containerMeals:Number(document.querySelector('#wbContainers').value)||14,allowFreezer:document.querySelector('#wbFreezer').checked,fishMeals:Number(document.querySelector('#wbFish').value)||0};
+ const containerMeals=Math.max(0,Math.min(14,Number(document.querySelector('#wbContainers').value)||0));
+ const fishMeals=Math.max(0,Math.min(containerMeals,Number(document.querySelector('#wbFish').value)||0));
+ state.weekPreferences={
+  cookSessions:Number(document.querySelector('#wbSessions').value)||2,
+  repeatMode:document.querySelector('#wbRepeat').value,
+  maxMainDishes:Math.max(1,Math.min(10,Number(document.querySelector('#wbMaxDishes').value)||4)),
+  containerMeals,allowFreezer:document.querySelector('#wbFreezer').checked,fishMeals
+ };
  modal.classList.add('hidden');randomizeMealPrepWeek(state.weekPreferences);
 }
 
 function randomizeMealPrepWeek(options){
- const prefs={...defaultWeekPreferences(),...(state.weekPreferences||{}),...(options||{})};state.weekPreferences=prefs;
- const p=profile(),catalog=allDishes();
- const batchBreakfast=catalog.filter(d=>d.category==='Завтрак').filter(d=>{const m=inferredPrepMeta(d.id);return m.mode==='batch_full'&&(m.shelfDays>=3||(prefs.allowFreezer&&m.freezer))});
+ const prefs={...defaultWeekPreferences(),...(state.weekPreferences||{}),...(options||{})};
+ prefs.containerMeals=Math.max(0,Math.min(14,Number(prefs.containerMeals??14)));
+ prefs.fishMeals=Math.max(0,Math.min(prefs.containerMeals,Number(prefs.fishMeals??0)));
+ prefs.maxMainDishes=Math.max(1,Math.min(10,Number(prefs.maxMainDishes??4)));
+ state.weekPreferences=prefs;
+
+ const p=profile(),catalog=allDishes(),shuffled=a=>[...a].sort(()=>Math.random()-.5);
+ const meta=d=>inferredPrepMeta(d.id);
+ const isFish=d=>{
+  const text=[d.name,...(d.ingredients||[]),...(d.tags||[])].join(' ').toLowerCase();
+  return /рыб|треск|минтай|лосос|тунец|горбуш|хек/.test(text);
+ };
+ const isContainer=d=>d.category==='Основное'&&meta(d).mode==='batch_full'&&(meta(d).shelfDays>=3||(prefs.allowFreezer&&meta(d).freezer));
+ const eligible=catalog.filter(isContainer);
+ const fishPool=eligible.filter(isFish),nonFishPool=eligible.filter(d=>!isFish(d));
+ const quickMain=catalog.filter(d=>d.category==='Аварийное'||(d.category==='Основное'&&!isContainer(d)&&d.minutes<=15));
+ const batchBreakfast=catalog.filter(d=>d.category==='Завтрак').filter(d=>{const m=meta(d);return m.mode==='batch_full'&&(m.shelfDays>=3||(prefs.allowFreezer&&m.freezer))});
  const quickBreakfast=catalog.filter(d=>d.category==='Завтрак'&&d.minutes<=10);
  const snacks=catalog.filter(d=>d.category==='Перекус');
- let eligible=catalog.filter(d=>d.category==='Основное').filter(d=>{const m=inferredPrepMeta(d.id);return m.mode==='batch_full'&&(m.shelfDays>=3||(prefs.allowFreezer&&m.freezer))});
- if(eligible.length<2){alert('В библиотеке недостаточно блюд, которые можно полностью приготовить заранее.');return}
- const isFish=d=>['Лосось','Тунец','Белая рыба','Креветки'].includes(proteinFamily(d));
- const shuffled=a=>[...a].sort(()=>Math.random()-.5);
- const targetDistinct=Math.max(2,Math.min(prefs.maxMainDishes,eligible.length));
- let chosen=[],attempt=0;
- while(attempt++<80){
-   const pool=shuffled(eligible),candidate=[];
-   if(prefs.fishMeals>0){const fish=pool.find(isFish);if(fish)candidate.push(fish)}
-   for(const d of pool){if(candidate.some(x=>x.id===d.id))continue;candidate.push(d);if(candidate.length>=targetDistinct)break}
-   const sig=candidate.map(x=>x.id).sort().join('|');
-   if(sig!==state.lastMealPrepSignature||attempt>60){chosen=candidate;state.lastMealPrepSignature=sig;break}
+
+ if(prefs.containerMeals>0&&!eligible.length){alert('В библиотеке нет подходящих контейнерных блюд.');return}
+ if(prefs.fishMeals>0&&!fishPool.length){alert('В библиотеке нет рыбных блюд, подходящих для контейнеров. Уменьши количество рыбных приёмов.');return}
+
+ const sessions=prefs.cookSessions===1
+  ?[{days:DAYS,session:'Воскресенье'}]
+  :prefs.cookSessions===3
+   ?[{days:['Понедельник','Вторник'],session:'Воскресенье'},{days:['Среда','Четверг'],session:'Вторник'},{days:['Пятница','Суббота','Воскресенье'],session:'Пятница'}]
+   :[{days:['Понедельник','Вторник','Среда'],session:'Воскресенье'},{days:['Четверг','Пятница','Суббота','Воскресенье'],session:'Среда'}];
+
+ // Все 14 позиций обеда/ужина.
+ const mainSlots=[];
+ sessions.forEach((block,bi)=>block.days.forEach(day=>['lunch','dinner'].forEach(key=>mainSlots.push({day,key,bi}))));
+
+ // Ровно указанное количество контейнерных позиций, распределённых по неделе.
+ const selectedContainerSlots=shuffled(mainSlots).slice(0,prefs.containerMeals);
+ const containerSlotKeys=new Set(selectedContainerSlots.map(s=>`${s.day}:${s.key}`));
+
+ // Распределяем требуемое число рыбных контейнеров между выбранными слотами.
+ const fishSlotKeys=new Set(shuffled(selectedContainerSlots).slice(0,prefs.fishMeals).map(s=>`${s.day}:${s.key}`));
+
+ // Число разных блюд ограничивает реальный каталог, а не просто красивую цифру в форме.
+ const distinctLimit=Math.min(prefs.maxMainDishes,Math.max(1,prefs.containerMeals),eligible.length);
+ const fishDistinctNeeded=prefs.fishMeals?Math.min(fishPool.length,Math.max(1,Math.min(distinctLimit,prefs.repeatMode==='low'?prefs.fishMeals:1))):0;
+ const selectedFish=shuffled(fishPool).slice(0,fishDistinctNeeded);
+ const remainingDistinct=Math.max(0,distinctLimit-selectedFish.length);
+ const selectedNonFish=shuffled(nonFishPool.filter(d=>!selectedFish.some(x=>x.id===d.id))).slice(0,remainingDistinct);
+ let chosen=[...selectedFish,...selectedNonFish];
+ if(chosen.length<distinctLimit){
+  chosen.push(...shuffled(eligible.filter(d=>!chosen.some(x=>x.id===d.id))).slice(0,distinctLimit-chosen.length));
  }
- if(!chosen.length)chosen=shuffled(eligible).slice(0,targetDistinct);
- const sessions=prefs.cookSessions===1?[{days:DAYS,session:'Воскресенье'}]:prefs.cookSessions===3?[{days:['Понедельник','Вторник'],session:'Воскресенье'},{days:['Среда','Четверг'],session:'Вторник'},{days:['Пятница','Суббота','Воскресенье'],session:'Пятница'}]:[{days:['Понедельник','Вторник','Среда'],session:'Воскресенье'},{days:['Четверг','Пятница','Суббота','Воскресенье'],session:'Среда'}];
- // Делим выбранные блюда между сессиями без пересечений. Одно и то же блюдо
- // может повторяться внутри своего блока, но не переезжает во вторую половину недели.
- const minPerSession=2;
- const requiredDistinct=Math.min(eligible.length,Math.max(targetDistinct,sessions.length*minPerSession));
- while(chosen.length<requiredDistinct){
-   const extra=shuffled(eligible).find(d=>!chosen.some(x=>x.id===d.id));
-   if(!extra)break;chosen.push(extra);
+
+ // Защита от идентичного набора при повторном нажатии.
+ const signature=chosen.map(x=>x.id).sort().join('|')+`:${prefs.containerMeals}:${prefs.fishMeals}`;
+ if(signature===state.lastMealPrepSignature&&eligible.length>chosen.length){
+  const replacement=shuffled(eligible.filter(d=>!chosen.some(x=>x.id===d.id)))[0];
+  if(replacement)chosen[chosen.length-1]=replacement;
  }
- const sessionPools=sessions.map(()=>[]);
- chosen.forEach((d,i)=>sessionPools[i%sessions.length].push(d));
- sessionPools.forEach((pool,i)=>{
-   if(pool.length)return;
-   const fallback=eligible.find(d=>!sessionPools.flat().some(x=>x.id===d.id))||eligible[i%eligible.length];
-   if(fallback)pool.push(fallback);
- });
+ state.lastMealPrepSignature=chosen.map(x=>x.id).sort().join('|')+`:${prefs.containerMeals}:${prefs.fishMeals}`;
+
+ const chosenFish=chosen.filter(isFish),chosenNonFish=chosen.filter(d=>!isFish(d));
+ const usage={};
+ const pickWithRepeat=(pool,slotIndex)=>{
+  if(!pool.length)return null;
+  const maxRepeat=prefs.repeatMode==='high'?99:prefs.repeatMode==='medium'?3:1;
+  const ordered=shuffled(pool).sort((a,b)=>(usage[a.id]||0)-(usage[b.id]||0));
+  let d=ordered.find(x=>(usage[x.id]||0)<maxRepeat)||ordered[0];
+  usage[d.id]=(usage[d.id]||0)+1;
+  return d;
+ };
+
  p.plan={};
- sessions.forEach((block,bi)=>{
-   const pool=shuffled(sessionPools[bi]);
-   const desiredRepeats=prefs.repeatMode==='high'?3:prefs.repeatMode==='medium'?2:1;
-   const seq=[];pool.forEach(d=>{for(let i=0;i<desiredRepeats;i++)seq.push(d)});
-   while(seq.length<block.days.length*2)seq.push(...shuffled(pool));
-   let pos=0;
-   block.days.forEach((day,di)=>{
-     let lunch=seq[pos++%seq.length],dinner=seq[pos++%seq.length];
-     if(pool.length>1&&dinner?.id===lunch?.id){dinner=pool.find(x=>x.id!==lunch.id)||dinner}
-     const bfPool=(di===1&&quickBreakfast.length)?quickBreakfast:batchBreakfast;
-     const breakfast=(bfPool.length?bfPool[Math.floor(Math.random()*bfPool.length)]:catalog.find(d=>d.category==='Завтрак'));
-     const snack=snacks.length?snacks[Math.floor(Math.random()*snacks.length)]:null;
-     p.plan[day]={breakfast:breakfast?.id,lunch:lunch?.id,snack:snack?.id,dinner:dinner?.id};
-   });
+ DAYS.forEach((day,di)=>{
+  const bfPool=(di%3===1&&quickBreakfast.length)?quickBreakfast:batchBreakfast;
+  const breakfast=(bfPool.length?shuffled(bfPool)[0]:catalog.find(d=>d.category==='Завтрак'));
+  const snack=snacks.length?shuffled(snacks)[0]:null;
+  p.plan[day]={breakfast:breakfast?.id,snack:snack?.id};
  });
+
+ mainSlots.forEach((slot,i)=>{
+  const key=`${slot.day}:${slot.key}`;
+  let d=null;
+  if(containerSlotKeys.has(key)){
+   d=fishSlotKeys.has(key)?pickWithRepeat(chosenFish,i):pickWithRepeat(chosenNonFish.length?chosenNonFish:chosen,i);
+   if(!d)d=pickWithRepeat(chosen,i);
+  }else if(quickMain.length){
+   d=shuffled(quickMain)[0];
+  }
+  if(d)p.plan[slot.day][slot.key]=d.id;
+ });
+
+ // Проверяем результат перед сохранением, чтобы настройки не были декоративными.
+ const actualContainer=mainSlots.filter(s=>containerSlotKeys.has(`${s.day}:${s.key}`)).length;
+ const actualFish=mainSlots.filter(s=>fishSlotKeys.has(`${s.day}:${s.key}`)).length;
+ state.lastWeekBuildSummary={containerMeals:actualContainer,fishMeals:actualFish,distinctDishes:new Set(selectedContainerSlots.map(s=>p.plan[s.day]?.[s.key]).filter(Boolean)).size};
+
  state.planMode='meal_prep';state.mealSkips={};state.cookingDone={};state.shopping={};save();render();
+ setTimeout(()=>alert(`Неделя составлена: контейнерных приёмов — ${actualContainer}, из них с рыбой — ${actualFish}, разных контейнерных блюд — ${state.lastWeekBuildSummary.distinctDishes}.`),50);
 }
 function randomizeThreeDays(){randomizeMealPrepWeek()}
 function randomizeWeek(){
