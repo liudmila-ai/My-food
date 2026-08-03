@@ -186,7 +186,7 @@ function authErrorMessage(e){const m=e?.message||String(e||'Ошибка');if(/I
 function renderAuth(mode='login',message=''){
   setSignedInUI(false);
   const signup=mode==='signup';
-  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v21</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
+  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v22</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
 }
 async function signUp(){const name=document.querySelector('#authName').value.trim(),email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value,p2=document.querySelector('#authPassword2').value;if(!email||!password)return renderAuth('signup','Заполните email и пароль.');if(password!==p2)return renderAuth('signup','Пароли не совпадают.');const client=await ensureCloudClient();if(!client)return renderAuth('signup','Сервис аккаунтов сейчас недоступен. Для первой регистрации включите доступ к интернету/VPN и повторите.');const {data,error}=await client.auth.signUp({email,password,options:{data:{name:name||'Я'},emailRedirectTo:appRedirectUrl()}});if(error)return renderAuth('signup',authErrorMessage(error));if(!data.session)return renderAuth('login','Аккаунт создан. Проверьте почту и подтвердите email, затем войдите.');}
 async function signIn(){const email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value;const client=await ensureCloudClient();if(!client)return renderAuth('login','Supabase сейчас недоступен. Первый вход на этом устройстве требует сети/VPN.');const {error}=await client.auth.signInWithPassword({email,password});if(error)renderAuth('login',authErrorMessage(error))}
@@ -302,18 +302,37 @@ function randomizeMealPrepWeek(options){
  }
  if(!chosen.length)chosen=shuffled(eligible).slice(0,targetDistinct);
  const sessions=prefs.cookSessions===1?[{days:DAYS,session:'Воскресенье'}]:prefs.cookSessions===3?[{days:['Понедельник','Вторник'],session:'Воскресенье'},{days:['Среда','Четверг'],session:'Вторник'},{days:['Пятница','Суббота','Воскресенье'],session:'Пятница'}]:[{days:['Понедельник','Вторник','Среда'],session:'Воскресенье'},{days:['Четверг','Пятница','Суббота','Воскресенье'],session:'Среда'}];
- const seq=[];
- const desiredRepeats=prefs.repeatMode==='high'?3:prefs.repeatMode==='medium'?2:1;
- chosen.forEach(d=>{for(let i=0;i<desiredRepeats;i++)seq.push(d)});
- while(seq.length<14)seq.push(...shuffled(chosen));
- p.plan={};let pos=0;
- sessions.forEach((block,bi)=>block.days.forEach((day,di)=>{
-   const lunch=seq[pos++%seq.length],dinner=seq[pos++%seq.length];
-   const bfPool=(di===1&&quickBreakfast.length)?quickBreakfast:batchBreakfast;
-   const breakfast=(bfPool.length?bfPool[Math.floor(Math.random()*bfPool.length)]:catalog.find(d=>d.category==='Завтрак'));
-   const snack=snacks.length?snacks[Math.floor(Math.random()*snacks.length)]:null;
-   p.plan[day]={breakfast:breakfast?.id,lunch:lunch?.id,snack:snack?.id,dinner:dinner?.id};
- }));
+ // Делим выбранные блюда между сессиями без пересечений. Одно и то же блюдо
+ // может повторяться внутри своего блока, но не переезжает во вторую половину недели.
+ const minPerSession=2;
+ const requiredDistinct=Math.min(eligible.length,Math.max(targetDistinct,sessions.length*minPerSession));
+ while(chosen.length<requiredDistinct){
+   const extra=shuffled(eligible).find(d=>!chosen.some(x=>x.id===d.id));
+   if(!extra)break;chosen.push(extra);
+ }
+ const sessionPools=sessions.map(()=>[]);
+ chosen.forEach((d,i)=>sessionPools[i%sessions.length].push(d));
+ sessionPools.forEach((pool,i)=>{
+   if(pool.length)return;
+   const fallback=eligible.find(d=>!sessionPools.flat().some(x=>x.id===d.id))||eligible[i%eligible.length];
+   if(fallback)pool.push(fallback);
+ });
+ p.plan={};
+ sessions.forEach((block,bi)=>{
+   const pool=shuffled(sessionPools[bi]);
+   const desiredRepeats=prefs.repeatMode==='high'?3:prefs.repeatMode==='medium'?2:1;
+   const seq=[];pool.forEach(d=>{for(let i=0;i<desiredRepeats;i++)seq.push(d)});
+   while(seq.length<block.days.length*2)seq.push(...shuffled(pool));
+   let pos=0;
+   block.days.forEach((day,di)=>{
+     let lunch=seq[pos++%seq.length],dinner=seq[pos++%seq.length];
+     if(pool.length>1&&dinner?.id===lunch?.id){dinner=pool.find(x=>x.id!==lunch.id)||dinner}
+     const bfPool=(di===1&&quickBreakfast.length)?quickBreakfast:batchBreakfast;
+     const breakfast=(bfPool.length?bfPool[Math.floor(Math.random()*bfPool.length)]:catalog.find(d=>d.category==='Завтрак'));
+     const snack=snacks.length?snacks[Math.floor(Math.random()*snacks.length)]:null;
+     p.plan[day]={breakfast:breakfast?.id,lunch:lunch?.id,snack:snack?.id,dinner:dinner?.id};
+   });
+ });
  state.planMode='meal_prep';state.mealSkips={};state.cookingDone={};state.shopping={};save();render();
 }
 function randomizeThreeDays(){randomizeMealPrepWeek()}
@@ -370,8 +389,8 @@ function mealPrepBatches(){
    const d=dish(id);if(!d)return;
    const isLongBreakfast=mealType==='breakfast'&&['З09','З10','З11','З12','З08'].includes(id);
    if(d.category!=='Основное'&&!isLongBreakfast)return;
-   const session=prepSessionForDay(day),key=`${session}|${mealType}|${id}`;
-   const z=map.get(key)||{session,id,mealType,dish:d,containers:[],ingredientRows:[],days:new Set(),fresh:new Set()};
+   const session=prepSessionForDay(day),key=`${session}|${id}`;
+   const z=map.get(key)||{session,id,mealType:'container',dish:d,containers:[],ingredientRows:[],days:new Set(),fresh:new Set()};
    const stable=containerIngredientsFor(id,mealType,p),fresh=freshIngredientsFor(id,mealType,p);
    z.containers.push({person:p.name,day,weight:containerWeight(stable),ingredients:stable});z.ingredientRows.push(stable);z.days.add(day);fresh.forEach(x=>z.fresh.add(x.name));map.set(key,z);
  });
