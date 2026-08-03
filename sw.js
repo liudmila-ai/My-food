@@ -1,11 +1,11 @@
-const CACHE = 'moya-eda-v26';
+const CACHE = 'moya-eda-v27';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=26',
-  './app.js?v=26',
-  './data.js?v=26',
-  './supabase-config.js?v=26',
+  './styles.css?v=27',
+  './app.js?v=27',
+  './data.js?v=27',
+  './supabase-config.js?v=27',
   './manifest.webmanifest',
   './icon-180.png',
   './icon-192.png',
