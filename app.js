@@ -186,7 +186,7 @@ function authErrorMessage(e){const m=e?.message||String(e||'Ошибка');if(/I
 function renderAuth(mode='login',message=''){
   setSignedInUI(false);
   const signup=mode==='signup';
-  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v28</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
+  app.innerHTML=`<section class="auth-wrap"><div class="auth-card"><span class="eyebrow">Моя еда · v29</span><h2>${signup?'Создать аккаунт':'Войти'}</h2>${message?`<div class="auth-message">${esc(message)}</div>`:''}${signup?`<label class="field">Имя<input id="authName" autocomplete="name" placeholder="Как вас называть"></label>`:''}<label class="field">Email<input id="authEmail" type="email" autocomplete="email" placeholder="name@example.com"></label><label class="field">Пароль<input id="authPassword" type="password" autocomplete="${signup?'new-password':'current-password'}" placeholder="Минимум 6 символов"></label>${signup?`<label class="field">Повторите пароль<input id="authPassword2" type="password" autocomplete="new-password"></label>`:''}<button class="btn auth-primary" onclick="${signup?'signUp()':'signIn()'}">${signup?'Создать аккаунт':'Войти'}</button><button class="auth-link" onclick="renderAuth('${signup?'login':'signup'}')">${signup?'Уже есть аккаунт':'Создать аккаунт'}</button>${!signup?`<button class="auth-link" onclick="resetPassword()">Забыли пароль?</button>`:''}<p class="tiny-note">Первый вход и регистрация требуют доступа к Supabase. После входа приложение работает локально без сети/VPN и синхронизируется позже.</p></div></section>`;
 }
 async function signUp(){const name=document.querySelector('#authName').value.trim(),email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value,p2=document.querySelector('#authPassword2').value;if(!email||!password)return renderAuth('signup','Заполните email и пароль.');if(password!==p2)return renderAuth('signup','Пароли не совпадают.');const client=await ensureCloudClient();if(!client)return renderAuth('signup','Сервис аккаунтов сейчас недоступен. Для первой регистрации включите доступ к интернету/VPN и повторите.');const {data,error}=await client.auth.signUp({email,password,options:{data:{name:name||'Я'},emailRedirectTo:appRedirectUrl()}});if(error)return renderAuth('signup',authErrorMessage(error));if(!data.session)return renderAuth('login','Аккаунт создан. Проверьте почту и подтвердите email, затем войдите.');}
 async function signIn(){const email=document.querySelector('#authEmail').value.trim(),password=document.querySelector('#authPassword').value;const client=await ensureCloudClient();if(!client)return renderAuth('login','Supabase сейчас недоступен. Первый вход на этом устройстве требует сети/VPN.');const {error}=await client.auth.signInWithPassword({email,password});if(error)renderAuth('login',authErrorMessage(error))}
@@ -449,9 +449,51 @@ function randomizeWeek(){
 }
 
 function selectedPlans(){const plan=profile()?.plan||{};return participants().flatMap(p=>DAYS.flatMap(day=>SLOTS.map(([mealType])=>({profile:p,day,mealType,id:plan[day]?.[mealType]})).filter(x=>x.id&&!isMealSkipped(p.id,day,x.mealType))))}
-function shoppingItems(){const exact=new Map();selectedPlans().forEach(({profile:p,id,mealType})=>scaledIngredientsFor(id,mealType,p).forEach(x=>{const key=`${x.name}|${x.unit||'г'}`;exact.set(key,(exact.get(key)||0)+Number(x.qty||0))}));return [...exact.entries()].map(([key,qty])=>{const [name,unit]=key.split('|');return{name,unit,qty}}).filter(x=>x.qty>0).sort((a,b)=>a.name.localeCompare(b.name,'ru'))}
+function canonicalShoppingIngredient(x){
+ let name=String(x.name||'').trim(),unit=x.unit||'г',qty=Number(x.qty||0);
+ const s=normName(name).replace(/\s+/g,' ').trim();
+
+ // Готовые крупы и макароны переводим обратно в сухой продукт.
+ if(/рис готов/.test(s)){name='Рис';qty*=.34;unit='г'}
+ else if(/гречк.*готов/.test(s)){name='Гречка';qty*=.36;unit='г'}
+ else if(/макарон.*готов|готов.*макарон|паста готов/.test(s)){name='Макароны';qty*=.42;unit='г'}
+ else if(/чечевиц.*готов/.test(s)){name='Чечевица';qty*=.40;unit='г'}
+ else if(/фасол.*готов/.test(s)){name='Фасоль сухая';qty*=.42;unit='г'}
+ else if(/булгур.*готов/.test(s)){name='Булгур';qty*=.38;unit='г'}
+
+ // Томатная основа: один продукт вместо трёх банок с разными биографиями.
+ else if(/томатн.*соус|протерт.*томат|томат.*собствен.*сок|пассата/.test(s)){name='Протёртые томаты';unit='г'}
+
+ // Унификация взаимозаменяемых продуктов.
+ else if(/оливков.*масл|растительн.*масл/.test(s)){name='Растительное масло';unit='г'}
+ else if(/^сметана(?:\s|$)|сметана 10|сметана 15/.test(s)){name='Сметана 10–15%';unit='г'}
+ else if(/^сыр$|твердый сыр|сыр твердый/.test(s)){name='Твёрдый сыр';unit='г'}
+ else if(/томат|помидор/.test(s)&&!/томатн.*соус|протерт|собствен.*сок/.test(s)){name='Помидоры';unit='г'}
+ else if(/перец сладк|болгарск.*перец/.test(s)){name='Сладкий перец';unit='г'}
+ else if(/куриное филе|филе куриц/.test(s)){name='Куриное филе';unit='г'}
+ else if(/фарш индей/.test(s)){name='Фарш из индейки';unit='г'}
+ else if(/говяжий фарш|фарш говя/.test(s)){name='Говяжий фарш';unit='г'}
+ else if(/сливки 10/.test(s)){name='Сливки 10%';unit='г'}
+ else if(/творог 5/.test(s)){name='Творог 5%';unit='г'}
+
+ // Вода, соль и специи не считаются отдельной закупкой по граммам.
+ if(/^(вода|соль|перец черный|черный перец|специи|сушеные травы)$/.test(normName(name)))return null;
+ return {name,unit,qty};
+}
+function shoppingItems(){
+ const exact=new Map();
+ selectedPlans().forEach(({profile:p,id,mealType})=>{
+  scaledIngredientsFor(id,mealType,p).forEach(raw=>{
+   const x=canonicalShoppingIngredient(raw);if(!x||x.qty<=0)return;
+   const key=`${normName(x.name)}|${x.unit}`;
+   const z=exact.get(key)||{name:x.name,unit:x.unit,qty:0};
+   z.qty+=x.qty;exact.set(key,z);
+  });
+ });
+ return [...exact.values()].filter(x=>x.qty>0).sort((a,b)=>a.name.localeCompare(b.name,'ru'));
+}
 function householdToggleHTML(){const ps=participants();return `<div class="household-strip"><b>В расчёте:</b> ${ps.map(x=>`<span class="tag">${esc(x.name)} · ${x.target.kcal} ккал</span>`).join('')}</div>`}
-function renderShopping(){const items=shoppingItems();app.innerHTML=`<section><h2>Покупки</h2>${householdToggleHTML()}<p class="note">Общий список для организатора и всех включённых членов семьи. Одинаковые продукты суммируются.</p>${items.map(x=>{const key=`${x.name}|${x.unit}`;return `<label class="shop-row ${state.shopping[key]?'done':''}"><input type="checkbox" ${state.shopping[key]?'checked':''} onchange="toggleShop('${key.replace(/'/g,"\\'")}')"><span>${esc(x.name)} <b>${Math.round(x.qty*10)/10} ${x.unit}</b></span></label>`}).join('')||'<div class="empty">Сначала составьте меню.</div>'}</section>`}
+function renderShopping(){const items=shoppingItems();app.innerHTML=`<section><h2>Покупки</h2>${householdToggleHTML()}<p class="note">Общий список для всей семьи. Синонимы объединены, а готовые крупы и макароны пересчитаны в сухой продукт для покупки.</p>${items.map(x=>{const key=`${x.name}|${x.unit}`;return `<label class="shop-row ${state.shopping[key]?'done':''}"><input type="checkbox" ${state.shopping[key]?'checked':''} onchange="toggleShop('${key.replace(/'/g,"\\'")}')"><span>${esc(x.name)} <b>${Math.round(x.qty*10)/10} ${x.unit}</b></span></label>`}).join('')||'<div class="empty">Сначала составьте меню.</div>'}</section>`}
 function toggleShop(k){state.shopping[k]=!state.shopping[k];save();renderShopping()}
 
 function normName(s){return s.toLowerCase().replace(/ё/g,'е')}
